@@ -53,6 +53,14 @@ def test_gemischte_sektion_zeigt_karte_und_kompakte_zeile():
     assert "Bankdrücken" in html.split("Noch nicht getrackt:")[1].split("</p>")[0]
 
 
+def test_chart_karte_hat_onerror_fallback():
+    # Kaputtes Chart-Bild (404) soll durch Textzeile ersetzt werden, kein Fragezeichen
+    summary = {"Klimmzüge": {"count": 3, "last": "2026-07-14T07:00:00"}}
+    html = render_dashboard_html([], "token", None, training_days=1, exercise_summary=summary)
+    assert "onerror=" in html
+    assert "Noch keine Diagrammdaten" in html
+
+
 def test_wochen_stat_tile_zeigt_woche():
     html = render_dashboard_html([], "token", None, training_days=0, week_number=5)
     assert "5/12" in html

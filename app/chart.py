@@ -32,9 +32,23 @@ def render_progress_chart(
     if not entries:
         return None
 
-    is_cardio = any(e.get("distance_km") is not None for e in entries)
-    metric_key = "distance_km" if is_cardio else "weight_kg"
-    label = "Distanz (km)" if is_cardio else "Gewicht (kg)"
+    # Metrik nach tatsächlich vorhandenen Daten wählen: Distanz/Dauer für Cardio,
+    # Gewicht für Kraft mit Zusatzlast, sonst Wiederholungen (z.B. Klimmzüge im
+    # Körpergewicht). So bekommt jede getrackte Übung ein sinnvolles Diagramm statt
+    # eines 404 (kaputtes Bild), wenn sie ohne kg geloggt wurde.
+    metric_options = [
+        ("distance_km", "Distanz (km)"),
+        ("duration_min", "Dauer (min)"),
+        ("weight_kg", "Gewicht (kg)"),
+        ("reps", "Wiederholungen"),
+    ]
+    metric_key = label = None
+    for key, lbl in metric_options:
+        if any(e.get(key) is not None for e in entries):
+            metric_key, label = key, lbl
+            break
+    if metric_key is None:
+        return None
 
     points = [
         (datetime.fromisoformat(e["logged_at"]), e[metric_key])

@@ -168,9 +168,16 @@ def _exercise_card(exercise: str, summary: dict, encoded_token: str) -> str:
         )
 
     encoded_exercise = quote(exercise)
+    # onerror: falls das Chart doch 404 liefert (Alt-Eintrag ganz ohne Zahlen),
+    # das kaputte Bild durch eine schlichte Textzeile ersetzen statt Fragezeichen.
+    onerror = (
+        "this.outerHTML=&#39;&lt;p class=&quot;untracked&quot;&gt;"
+        "Noch keine Diagrammdaten.&lt;/p&gt;&#39;"
+    )
     return (
         f'<div class="card"><h3>{exercise}</h3>'
-        f'<img src="/dashboard/chart.png?exercise={encoded_exercise}&token={encoded_token}" alt="{exercise} Verlauf">'
+        f'<img src="/dashboard/chart.png?exercise={encoded_exercise}&token={encoded_token}" '
+        f'alt="{exercise} Verlauf" onerror="{onerror}">'
         f"</div>"
     )
 
