@@ -139,16 +139,23 @@ def _handle_voice_message(chat_id: int, user_id: int, file_id: str) -> dict:
         audio_bytes = telegram.get_file_bytes(file_id)
         transcript = transcribe.transcribe_voice(audio_bytes)
     except Exception:
+        logging.exception("Fehler beim Herunterladen/Transkribieren der Sprachnachricht")
         transcript = None
 
     if not transcript:
-        telegram.send_message(chat_id, _VOICE_FALLBACK_TEXT)
+        try:
+            telegram.send_message(chat_id, _VOICE_FALLBACK_TEXT)
+        except Exception:
+            logging.exception("Fehler beim Senden der Sprachnachrichten-Fallback-Meldung")
         return {"ok": True}
 
     # Rohes Transkript immer zuerst zeigen - deutsche Fachbegriffe (z.B. "Klimmzüge")
     # kann Whisper verhören, und ohne dieses Echo wäre ein falsch erkannter Eintrag
     # oder eine an den Chat weitergereichte Fehltranskription nicht nachvollziehbar.
-    telegram.send_message(chat_id, f'🎤 „{transcript}"')
+    try:
+        telegram.send_message(chat_id, f'🎤 „{transcript}"')
+    except Exception:
+        logging.exception("Fehler beim Senden des Transkript-Echos")
     return _safe_handle_message(chat_id, user_id, transcript)
 
 
