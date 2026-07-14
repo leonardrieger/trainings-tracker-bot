@@ -72,7 +72,8 @@ repository").
    - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 4. Unter **Environment** die Variablen aus `.env.example` eintragen
    (`TELEGRAM_BOT_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GROQ_API_KEY`,
-   `ALLOWED_TELEGRAM_USER_ID` — letztere zunächst leer lassen, siehe Schritt 7).
+   `CRON_SECRET`, `DASHBOARD_TOKEN`, `ALLOWED_TELEGRAM_USER_ID` — letztere zunächst leer
+   lassen, siehe Schritt 7).
 5. Deployen, Render-URL notieren (z.B. `https://dein-bot.onrender.com`).
 
 ## 7. Eigene Telegram-User-ID herausfinden
@@ -93,12 +94,34 @@ curl "https://api.telegram.org/bot<DEIN_TOKEN>/setWebhook?url=https://dein-bot.o
 
 Antwort sollte `"ok":true` enthalten.
 
+## 9. Keep-Alive + morgendliche Erinnerung einrichten
+
+Der Endpoint `/cron/tick?token=<CRON_SECRET>` hält den Server wach **und** verschickt um
+7:00 Uhr (Europe/Berlin) die Trainings-Erinnerung für den Tag — beides in einem Aufruf,
+ausgelöst von einem externen kostenlosen Ping-Dienst (kein GitHub-Actions-Cron, da das bei
+einem privaten Repo das kostenlose Minutenkontingent sprengen würde):
+
+1. Kostenlosen Account bei [cron-job.org](https://cron-job.org) anlegen.
+2. Neuen Cronjob anlegen: URL = `https://dein-bot.onrender.com/cron/tick?token=<CRON_SECRET>`,
+   Intervall = alle 10 Minuten.
+3. Fertig — kein weiterer Code nötig.
+
+## 10. Dashboard aufrufen
+
+`https://dein-bot.onrender.com/dashboard?token=<DASHBOARD_TOKEN>` im Browser öffnen und als
+Lesezeichen speichern. Zeigt Körpergewichts-Trend, eine Karte pro geloggter Übung mit
+Verlaufs-Chart, sowie die letzten 20 Aktivitäten.
+
 ## Nutzung
 
 - Beliebige Nachricht mit Übung + Zahlen senden, z.B. `Kniebeuge 4x5 100kg`.
-- `/verlauf Kniebeuge` — letzte 10 Einträge als Text.
-- `/chart Kniebeuge` — Liniendiagramm als Bild.
+- Körpergewicht: `Gewicht heute 84,2kg`.
 - Cardio: `30 min 5 km Laufen`.
+- `/verlauf Kniebeuge` (oder `/verlauf Gewicht`) — letzte Einträge als Text.
+- `/chart Kniebeuge` (oder `/chart Gewicht`) — Liniendiagramm als Bild.
+- Dashboard: siehe Schritt 10.
 
-**Bekannte Einschränkung:** Render Free Tier schläft nach Inaktivität ein — die erste
-Nachricht nach einer Pause kann ~10–30 Sekunden auf Antwort warten.
+**Sicherheitshinweis:** `TELEGRAM_BOT_TOKEN` wurde im Rahmen der Einrichtung im Klartext
+geteilt. Empfehlenswert (kein Muss): über @BotFather (`/mybots` → Bot auswählen →
+API Token → Revoke current token) einmal neu generieren, danach `.env` und Render-Env-Var
+aktualisieren.

@@ -25,12 +25,16 @@ Erlaubte Übungsnamen (wähle exakt einen davon, exakte Schreibweise, oder null 
 keiner eindeutig passt):
 {exercises}
 
+Falls die Nachricht stattdessen das KÖRPERGEWICHT der Person angibt (z.B. "Gewicht heute
+84,2kg", "wiege 83kg"), setze record_type auf "bodyweight" und exercise auf null.
+
 JSON-Felder:
-- exercise: einer der erlaubten Namen oder null
+- record_type: "workout" oder "bodyweight"
+- exercise: einer der erlaubten Namen oder null (bei "bodyweight" immer null)
 - is_cardio: true oder false
 - sets: Anzahl Sätze (Zahl) oder null
 - reps: Wiederholungen pro Satz (Zahl) oder null
-- weight_kg: Gewicht in kg (Zahl) oder null
+- weight_kg: bei "workout" das Trainingsgewicht, bei "bodyweight" das Körpergewicht (Zahl) oder null
 - duration_min: Dauer in Minuten (Zahl) oder null
 - distance_km: Distanz in km (Zahl) oder null
 """
@@ -74,6 +78,18 @@ def parse_message(text: str) -> ParsedWorkout:
     except Exception:
         return parse_message_regex(text)
 
+    weight_kg = _as_number(data, "weight_kg")
+
+    if data.get("record_type") == "bodyweight":
+        return ParsedWorkout(
+            exercise=None,
+            is_cardio=False,
+            weight_kg=float(weight_kg) if weight_kg is not None else None,
+            raw_text=text,
+            recognized=weight_kg is not None,
+            record_type="bodyweight",
+        )
+
     exercise = data.get("exercise")
     if exercise not in EXERCISE_ALIASES:
         exercise = None
@@ -82,7 +98,6 @@ def parse_message(text: str) -> ParsedWorkout:
 
     sets = _as_number(data, "sets")
     reps = _as_number(data, "reps")
-    weight_kg = _as_number(data, "weight_kg")
     duration_min = _as_number(data, "duration_min")
     distance_km = _as_number(data, "distance_km")
 

@@ -16,6 +16,7 @@ _WEIGHT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kg\b", re.IGNORECASE)
 _COMPACT_RE = re.compile(r"(\d+)\s*[x×]\s*(\d+)\b", re.IGNORECASE)
 _DISTANCE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*km\b", re.IGNORECASE)
 _DURATION_RE = re.compile(r"(\d+)\s*min(?:uten)?\b", re.IGNORECASE)
+_BODYWEIGHT_RE = re.compile(r"\b(?:gewicht|wiege|körpergewicht|koerpergewicht)\b", re.IGNORECASE)
 
 
 @dataclass
@@ -29,8 +30,15 @@ class ParsedWorkout:
     distance_km: float | None = None
     raw_text: str = ""
     recognized: bool = False
+    record_type: str = "workout"
 
     def confirmation_text(self) -> str:
+        if self.record_type == "bodyweight":
+            if self.weight_kg is None:
+                return (
+                    "⚠️ Kein Gewicht erkannt. Tipp: \"Gewicht heute 84,2kg\"."
+                )
+            return f"⚖️ Körpergewicht: {self.weight_kg:g} kg notiert"
         if not self.recognized:
             return (
                 "⚠️ Konnte die Übung nicht sicher erkennen. Gespeichert als Rohtext:\n"
@@ -65,12 +73,23 @@ def _to_float(s: str) -> float:
 
 
 def parse_message(text: str) -> ParsedWorkout:
+    weight_match = _WEIGHT_RE.search(text)
+
+    if _BODYWEIGHT_RE.search(text) and weight_match:
+        return ParsedWorkout(
+            exercise=None,
+            is_cardio=False,
+            weight_kg=_to_float(weight_match.group(1)),
+            raw_text=text,
+            recognized=True,
+            record_type="bodyweight",
+        )
+
     exercise = match_exercise(text)
     is_cardio = exercise in CARDIO_EXERCISES if exercise else False
 
     distance_match = _DISTANCE_RE.search(text)
     duration_match = _DURATION_RE.search(text)
-    weight_match = _WEIGHT_RE.search(text)
     sets_match = _SETS_RE.search(text)
     reps_match = _REPS_RE.search(text)
 

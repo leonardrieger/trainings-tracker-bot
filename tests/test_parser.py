@@ -89,3 +89,27 @@ def test_confirmation_text_kraft():
 def test_confirmation_text_cardio():
     r = parse_message("30 min 5 km Laufen")
     assert r.confirmation_text() == "✅ Laufen – 5 km – 30 min"
+
+
+def test_koerpergewicht_wird_erkannt():
+    r = parse_message("Gewicht heute 84,2kg")
+    assert r.record_type == "bodyweight"
+    assert r.weight_kg == 84.2
+    assert r.exercise is None
+    assert r.recognized is True
+
+
+def test_koerpergewicht_alternative_formulierung():
+    r = parse_message("wiege gerade 83kg")
+    assert r.record_type == "bodyweight"
+    assert r.weight_kg == 83
+
+
+def test_koerpergewicht_confirmation_text():
+    r = parse_message("Gewicht heute 84,2kg")
+    assert r.confirmation_text() == "⚖️ Körpergewicht: 84.2 kg notiert"
+
+
+def test_normales_training_bleibt_record_type_workout():
+    r = parse_message("2 Sets 8 Wiederholungen 80kg Bankdrücken")
+    assert r.record_type == "workout"

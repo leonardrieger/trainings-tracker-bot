@@ -87,6 +87,26 @@ def test_fallback_auf_regex_bei_api_fehler(monkeypatch):
     assert r.sets == 2
 
 
+def test_llm_parse_koerpergewicht(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    payload = {
+        "record_type": "bodyweight",
+        "exercise": None,
+        "is_cardio": False,
+        "sets": None,
+        "reps": None,
+        "weight_kg": 84.2,
+        "duration_min": None,
+        "distance_km": None,
+    }
+    with patch("app.llm_parser.httpx.post", return_value=_fake_groq_response(payload)):
+        r = llm_parser.parse_message("Gewicht heute 84,2kg")
+    assert r.record_type == "bodyweight"
+    assert r.weight_kg == 84.2
+    assert r.exercise is None
+    assert r.recognized is True
+
+
 def test_fallback_bei_kaputtem_json(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
     mock = MagicMock()
