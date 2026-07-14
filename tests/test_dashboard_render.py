@@ -7,6 +7,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.dashboard import render_dashboard_html
 
 
+def test_gewicht_delta_wird_angezeigt():
+    html = render_dashboard_html(
+        [], "token", {"weight_kg": 83.4}, training_days=0, weight_delta=(85.0, 83.4)
+    )
+    assert "1,6 kg" in html
+    assert "(7 Tage)" in html
+
+
+def test_gewicht_delta_fehlt_ohne_daten():
+    html = render_dashboard_html([], "token", {"weight_kg": 83.4}, training_days=0)
+    assert "(7 Tage)" not in html
+
+
+def test_wiederholen_chips_zeigen_raw_text_und_label():
+    last_sets = [
+        {
+            "exercise": "Bankdrücken", "sets": 3, "reps": 8, "weight_kg": 80,
+            "distance_km": None, "duration_min": None, "raw_text": "3x8 80kg Bankdrücken",
+            "logged_at": "2026-07-14T10:00:00",
+        }
+    ]
+    html = render_dashboard_html([], "token", None, training_days=0, last_sets=last_sets)
+    assert 'data-fill="3x8 80kg Bankdrücken"' in html
+    assert "Bankdrücken" in html
+    assert '<span class="micro-label">Zuletzt</span>' in html
+
+
+def test_ohne_last_sets_keine_chips():
+    html = render_dashboard_html([], "token", None, training_days=0)
+    assert 'class="chip"' not in html
+
+
+def test_uebungs_datalist_vorhanden():
+    html = render_dashboard_html([], "token", None, training_days=0)
+    assert '<datalist id="exercise-names">' in html
+    assert '<option value="Kniebeuge">' in html
+    assert 'list="exercise-names"' in html
+
+
 def test_session_only_uebung_zeigt_zaehler_statt_chart():
     summary = {"Kickboxen": {"count": 5, "last": "2026-07-13T18:00:00"}}
     html = render_dashboard_html([], "token", None, training_days=5, exercise_summary=summary)

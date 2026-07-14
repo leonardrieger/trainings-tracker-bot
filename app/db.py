@@ -71,6 +71,31 @@ def get_exercise_summary(telegram_user_id: int) -> dict[str, dict]:
     return summary
 
 
+def get_last_sets(telegram_user_id: int, limit: int = 4) -> list[dict]:
+    """Letzter vollständiger Eintrag je Übung, neueste zuerst (für „Letzten Satz
+    wiederholen"-Vorschläge im Dashboard)."""
+    rows = (
+        get_client()
+        .table(TABLE)
+        .select("*")
+        .eq("telegram_user_id", telegram_user_id)
+        .order("logged_at", desc=True)
+        .limit(200)
+        .execute()
+        .data
+    )
+    seen: set[str] = set()
+    result: list[dict] = []
+    for row in rows:
+        if row["exercise"] in seen or row["exercise"] == "Unbekannt":
+            continue
+        seen.add(row["exercise"])
+        result.append(row)
+        if len(result) >= limit:
+            break
+    return result
+
+
 def get_recent_activity(telegram_user_id: int, limit: int = 20) -> list[dict]:
     workouts = (
         get_client()

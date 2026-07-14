@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.reminders import (
     TRAINING_PLAN,
+    format_weight_delta,
     is_deload_week,
     klimmzug_phase_hint,
     reminder_text,
@@ -55,6 +56,18 @@ def test_reminder_text_mit_explizitem_plan_override():
     text = reminder_text(montag, plan=custom_plan)
     assert "Individueller Montags-Plan" in text
     assert TRAINING_PLAN[0] not in text
+
+
+def test_format_weight_delta_abnahme():
+    assert format_weight_delta(85.0, 83.4) == "↓ 1.6 kg"
+
+
+def test_format_weight_delta_zunahme():
+    assert format_weight_delta(83.4, 85.0) == "↑ 1.6 kg"
+
+
+def test_format_weight_delta_unveraendert():
+    assert format_weight_delta(84.0, 84.0) == "→ 0.0 kg"
 
 
 def test_week_number_vor_start_ist_none():

@@ -18,6 +18,17 @@ def _update(text: str, user_id: int = 42) -> dict:
     return {"message": {"chat": {"id": user_id}, "from": {"id": user_id}, "text": text}}
 
 
+def _callback_update(data: str, user_id: int = 42) -> dict:
+    return {
+        "callback_query": {
+            "id": "cbq1",
+            "from": {"id": user_id},
+            "message": {"chat": {"id": user_id}},
+            "data": data,
+        }
+    }
+
+
 def test_start_command():
     with patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("/start"))
@@ -57,6 +68,76 @@ def test_verlauf_command():
         get_history.assert_called_once()
         send.assert_called_once()
         assert "Bankdrücken" in send.call_args[0][1]
+
+
+def test_verlauf_ohne_argument_zeigt_tastatur():
+    summary = {
+        "Bankdrücken": {"count": 2, "last": "2026-07-14T10:00:00"},
+        "Kniebeuge": {"count": 1, "last": "2026-07-10T10:00:00"},
+    }
+    with patch("app.main.db.get_exercise_summary", return_value=summary), patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_update("/verlauf"))
+    assert r.status_code == 200
+    send.assert_called_once()
+    keyboard = send.call_args.kwargs["reply_markup"]
+    assert keyboard["inline_keyboard"][0][0]["callback_data"] == "v:Bankdrücken"
+
+
+def test_chart_ohne_argument_zeigt_tastatur():
+    summary = {"Bankdrücken": {"count": 2, "last": "2026-07-14T10:00:00"}}
+    with patch("app.main.db.get_exercise_summary", return_value=summary), patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_update("/chart"))
+    assert r.status_code == 200
+    keyboard = send.call_args.kwargs["reply_markup"]
+    assert keyboard["inline_keyboard"][0][0]["callback_data"] == "c:Bankdrücken"
+
+
+def test_verlauf_ohne_argument_ohne_daten_zeigt_nutzungshinweis():
+    with patch("app.main.db.get_exercise_summary", return_value={}), patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_update("/verlauf"))
+    assert r.status_code == 200
+    assert send.call_args.kwargs.get("reply_markup") is None
+    assert "Nutzung" in send.call_args[0][1]
+
+
+def test_callback_query_chart_routet_zu_chart_und_bestaetigt():
+    with patch("app.main.db.get_history", return_value=[{"logged_at": "2026-07-01T10:00:00", "weight_kg": 80}]), patch(
+        "app.main.render_progress_chart", return_value=b"fake-png"
+    ), patch("app.main.telegram.send_photo") as send_photo, patch(
+        "app.main.telegram.answer_callback_query"
+    ) as answer:
+        r = client.post("/webhook", json=_callback_update("c:Bankdrücken"))
+    assert r.status_code == 200
+    send_photo.assert_called_once()
+    answer.assert_called_once_with("cbq1")
+
+
+def test_callback_query_verlauf_routet_zu_verlauf_text():
+    fake_entries = [
+        {"logged_at": "2026-07-01T10:00:00", "sets": 3, "reps": 8, "weight_kg": 75, "distance_km": None, "duration_min": None}
+    ]
+    with patch("app.main.db.get_history", return_value=fake_entries), patch(
+        "app.main.telegram.send_message"
+    ) as send, patch("app.main.telegram.answer_callback_query"):
+        r = client.post("/webhook", json=_callback_update("v:Kniebeuge"))
+    assert r.status_code == 200
+    assert "Kniebeuge" in send.call_args[0][1]
+
+
+def test_callback_query_von_nicht_erlaubtem_nutzer_wird_ignoriert():
+    with patch("app.main.telegram.answer_callback_query") as answer, patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_callback_update("c:Bankdrücken", user_id=999))
+    assert r.status_code == 200
+    answer.assert_not_called()
+    send.assert_not_called()
 
 
 def test_programm_setzen():

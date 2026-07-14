@@ -82,13 +82,17 @@ def should_send_weekly_summary(now: datetime, last_sent: date | None) -> bool:
     return last_sent != now.date()
 
 
+def format_weight_delta(start: float, end: float) -> str:
+    delta = end - start
+    arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
+    return f"{arrow} {abs(delta):.1f} kg"
+
+
 def weekly_summary_text(training_days: int, weight_change: tuple[float, float] | None) -> str:
     lines = ["📊 Wochenrückblick", f"Trainingstage geloggt: {training_days} von {WEEKLY_TRAINING_TARGET} geplant"]
     if weight_change is not None:
         start, end = weight_change
-        delta = end - start
-        arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
-        lines.append(f"Gewicht: {start:g} → {end:g} kg ({arrow} {abs(delta):.1f} kg)")
+        lines.append(f"Gewicht: {start:g} → {end:g} kg ({format_weight_delta(start, end)})")
     strong = training_days >= WEEKLY_TRAINING_TARGET - 1
     lines.append("Stark durchgezogen! 💪" if strong else "Nächste Woche wieder mehr Einheiten schaffen 💪")
     return "\n".join(lines)

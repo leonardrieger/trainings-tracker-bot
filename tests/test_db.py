@@ -92,3 +92,33 @@ def test_delete_state_ruft_supabase_delete_auf():
         db.delete_state("training_plan")
     mock_client.table.assert_called_once_with(db.STATE_TABLE)
     mock_client.table.return_value.delete.return_value.eq.assert_called_once_with("key", "training_plan")
+
+
+def _mock_last_sets_rows(rows: list[dict]) -> MagicMock:
+    mock_client = MagicMock()
+    chain = mock_client.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value
+    chain.execute.return_value.data = rows
+    return mock_client
+
+
+def test_get_last_sets_dedupliziert_nach_uebung_und_behaelt_neuesten():
+    rows = [
+        {"exercise": "Bankdrücken", "raw_text": "3x8 80kg Bankdrücken", "logged_at": "2026-07-14T10:00:00"},
+        {"exercise": "Kniebeuge", "raw_text": "3x8 100kg Kniebeuge", "logged_at": "2026-07-13T10:00:00"},
+        {"exercise": "Bankdrücken", "raw_text": "3x8 75kg Bankdrücken", "logged_at": "2026-07-10T10:00:00"},
+        {"exercise": "Unbekannt", "raw_text": "asdf", "logged_at": "2026-07-09T10:00:00"},
+    ]
+    with patch("app.db.get_client", return_value=_mock_last_sets_rows(rows)):
+        result = db.get_last_sets(42, limit=4)
+    assert [r["exercise"] for r in result] == ["Bankdrücken", "Kniebeuge"]
+    assert result[0]["raw_text"] == "3x8 80kg Bankdrücken"
+
+
+def test_get_last_sets_respektiert_limit():
+    rows = [
+        {"exercise": f"Ex{i}", "raw_text": f"r{i}", "logged_at": f"2026-07-{i:02d}T10:00:00"}
+        for i in range(1, 10)
+    ]
+    with patch("app.db.get_client", return_value=_mock_last_sets_rows(rows)):
+        result = db.get_last_sets(42, limit=3)
+    assert len(result) == 3

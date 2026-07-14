@@ -37,6 +37,8 @@ def test_dashboard_mit_richtigem_token_200(monkeypatch):
         "app.main.db.get_workout_dates_in_range", return_value=set()
     ), patch(
         "app.main.db.get_training_plan", return_value=(TRAINING_PLAN, TRAINING_PLAN_SHORT)
+    ), patch("app.main.db.get_weight_change_in_range", return_value=None), patch(
+        "app.main.db.get_last_sets", return_value=[]
     ):
         r = client.get("/dashboard?token=richtig")
     assert r.status_code == 200

@@ -10,12 +10,13 @@ import html
 from datetime import date, timedelta
 
 from app.config import TARGET_WEIGHT_MAX, TARGET_WEIGHT_MIN
-from app.exercises import PLAN_SECTIONS, SESSION_ONLY_EXERCISES
+from app.exercises import EXERCISE_ALIASES, PLAN_SECTIONS, SESSION_ONLY_EXERCISES
 from app.reminders import (
     PROGRAM_LENGTH_WEEKS,
     TRAINING_PLAN,
     TRAINING_PLAN_SHORT,
     WEEKDAY_ABBR,
+    format_weight_delta,
     is_deload_week,
 )
 from urllib.parse import quote
@@ -72,6 +73,15 @@ _STYLE = """
     margin: 1.1rem 0 0; padding: .6rem .85rem; border-left: 2px solid var(--accent);
     background: var(--accent-soft); border-radius: 0 8px 8px 0; font-size: .82rem; color: var(--ink-dim);
   }
+
+  .chips { margin: 1.75rem 0 0; }
+  .chip-row { display: flex; gap: .5rem; overflow-x: auto; margin-top: .7rem; padding-bottom: .1rem; }
+  .chip {
+    flex: 0 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+    padding: .5rem .9rem; color: var(--ink-dim); font-size: .82rem; font-family: inherit;
+    white-space: nowrap; cursor: pointer;
+  }
+  .chip:active { transform: scale(.97); }
 
   .quick { display: flex; gap: .5rem; margin: 1.75rem 0 .5rem; }
   .quick input {
@@ -237,6 +247,27 @@ def _hero_parts(plan: str) -> tuple[str, str]:
     return plan.strip(), ""
 
 
+def _repeat_chips(last_sets: list[dict]) -> str:
+    if not last_sets:
+        return ""
+    chips = []
+    for entry in last_sets:
+        detail, _ = _entry_detail(entry)
+        label = f"{_entry_name(entry)} · {detail}"
+        chips.append(
+            f'<button type="button" class="chip" data-fill="{_attr(entry["raw_text"])}">{_t(label)}</button>'
+        )
+    return (
+        '<div class="chips"><span class="micro-label">Zuletzt</span>'
+        f'<div class="chip-row">{"".join(chips)}</div></div>'
+    )
+
+
+def _exercise_datalist() -> str:
+    options = "".join(f'<option value="{_attr(name)}">' for name in sorted(EXERCISE_ALIASES))
+    return f'<datalist id="exercise-names">{options}</datalist>'
+
+
 # ---------------------------------------------------------------- Heute-View
 
 def _heute_view(
@@ -250,6 +281,7 @@ def _heute_view(
     plan_long: dict[int, str],
     plan_short: dict[int, str],
     active: bool,
+    last_sets: list[dict] | None = None,
 ) -> str:
     hidden_attr = "" if active else " hidden"
     parts = [f'<section class="view" id="view-heute"{hidden_attr}>']
@@ -270,15 +302,19 @@ def _heute_view(
             '<div class="note">📉 Deload-Woche (6–8): diese Woche ~60 % Gewicht, halbe Sätze einplanen.</div>'
         )
 
+    parts.append(_repeat_chips(last_sets or []))
+
     parts.append(
         f'<form class="quick" method="post" action="/dashboard/log?token={encoded_token}">'
         '<input type="text" name="text" required aria-label="Eintrag hinzufügen" '
+        'list="exercise-names" '
         "placeholder='z. B. &quot;3×8 100 kg Kniebeuge&quot;'>"
         '<button type="submit" aria-label="Eintragen">→</button>'
         "</form>"
         f'<form class="undo-form" method="post" action="/dashboard/undo?token={encoded_token}">'
         '<button type="submit" class="undo">↩ Letzten Eintrag rückgängig</button>'
         "</form>"
+        f"{_exercise_datalist()}"
     )
     if flash:
         parts.append(f'<div class="flash">{_t(flash)}</div>')
@@ -332,6 +368,7 @@ def _fortschritt_view(
     week_value: str,
     summary: dict,
     active: bool,
+    weight_delta: tuple[float, float] | None = None,
 ) -> str:
     weight_val = _num(latest_weight["weight_kg"]) if latest_weight else "–"
     hidden_attr = "" if active else " hidden"
@@ -349,7 +386,11 @@ def _fortschritt_view(
     parts.append('<div class="chart-head"><h2>Körpergewicht</h2></div>')
     if latest_weight:
         parts.append(_chart_img("Gewicht", encoded_token, "Körpergewicht-Verlauf"))
-        parts.append(f'<p class="chart-cap">Zielband {TARGET_WEIGHT_RANGE}</p>')
+        cap = f"Zielband {TARGET_WEIGHT_RANGE}"
+        if weight_delta is not None:
+            delta_text = format_weight_delta(*weight_delta).replace(".", ",")
+            cap += f" · {delta_text} (7 Tage)"
+        parts.append(f'<p class="chart-cap">{_t(cap)}</p>')
     else:
         parts.append('<p class="untracked-line">Noch keine Gewichtsdaten — schreib z. B. „Gewicht heute 84 kg".</p>')
     parts.append("</div>")
@@ -473,6 +514,13 @@ _SCRIPT = """
       window.scrollTo(0, 0);
     });
   });
+  document.querySelectorAll(".chip").forEach(function (c) {
+    c.addEventListener("click", function () {
+      var input = document.querySelector(".quick input");
+      input.value = c.dataset.fill;
+      input.focus();
+    });
+  });
   if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js"); }
 </script>
 """
@@ -494,6 +542,8 @@ def render_dashboard_html(
     plan_long: dict[int, str] | None = None,
     plan_short: dict[int, str] | None = None,
     view: str = "heute",
+    weight_delta: tuple[float, float] | None = None,
+    last_sets: list[dict] | None = None,
 ) -> str:
     encoded_token = quote(token)
     summary = exercise_summary or {}
@@ -510,10 +560,11 @@ def render_dashboard_html(
 
     heute = _heute_view(
         encoded_token, today, week_value, week_number, trained_dates or set(), recent, flash,
-        plan_long, plan_short, view == "heute",
+        plan_long, plan_short, view == "heute", last_sets,
     )
     fortschritt = _fortschritt_view(
-        encoded_token, latest_weight, training_days, week_value, summary, view == "fortschritt"
+        encoded_token, latest_weight, training_days, week_value, summary, view == "fortschritt",
+        weight_delta,
     )
     verlauf = _verlauf_view(recent, view == "verlauf")
     plan = _plan_view(encoded_token, plan_long, plan_short, view == "plan")

@@ -112,26 +112,10 @@ def cron_tick(token: str = "") -> dict:
     return result
 
 
-@app.post("/webhook")
-async def webhook(request: Request) -> dict:
-    # Nur Telegram kennt das beim setWebhook hinterlegte Secret - gefälschte
-    # POSTs von Dritten (erratene URL, gespoofte from.id) fallen hier durch.
-    expected_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
-    if expected_secret and request.headers.get("X-Telegram-Bot-Api-Secret-Token") != expected_secret:
-        return {"ok": True}
+_CALLBACK_COMMANDS = {"v": "/verlauf", "c": "/chart"}
 
-    update = await request.json()
-    message = update.get("message")
-    if not message or "text" not in message:
-        return {"ok": True}
 
-    chat_id = message["chat"]["id"]
-    user_id = message["from"]["id"]
-    text = message["text"].strip()
-
-    if user_id != _allowed_user_id():
-        return {"ok": True}
-
+def _safe_handle_message(chat_id: int, user_id: int, text: str) -> dict:
     try:
         return _handle_message(chat_id, user_id, text)
     except Exception:
@@ -147,6 +131,46 @@ async def webhook(request: Request) -> dict:
         return {"ok": True}
 
 
+@app.post("/webhook")
+async def webhook(request: Request) -> dict:
+    # Nur Telegram kennt das beim setWebhook hinterlegte Secret - gefälschte
+    # POSTs von Dritten (erratene URL, gespoofte from.id) fallen hier durch.
+    expected_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+    if expected_secret and request.headers.get("X-Telegram-Bot-Api-Secret-Token") != expected_secret:
+        return {"ok": True}
+
+    update = await request.json()
+
+    callback_query = update.get("callback_query")
+    if callback_query:
+        user_id = callback_query["from"]["id"]
+        if user_id != _allowed_user_id():
+            return {"ok": True}
+        try:
+            telegram.answer_callback_query(callback_query["id"])
+        except Exception:
+            pass
+        chat_id = callback_query["message"]["chat"]["id"]
+        prefix, _, exercise = callback_query.get("data", "").partition(":")
+        command = _CALLBACK_COMMANDS.get(prefix)
+        if not command or not exercise:
+            return {"ok": True}
+        return _safe_handle_message(chat_id, user_id, f"{command} {exercise}")
+
+    message = update.get("message")
+    if not message or "text" not in message:
+        return {"ok": True}
+
+    chat_id = message["chat"]["id"]
+    user_id = message["from"]["id"]
+    text = message["text"].strip()
+
+    if user_id != _allowed_user_id():
+        return {"ok": True}
+
+    return _safe_handle_message(chat_id, user_id, text)
+
+
 def _undo_message(deleted: dict | None) -> str:
     if deleted is None:
         return "Nichts zum Löschen gefunden."
@@ -155,6 +179,12 @@ def _undo_message(deleted: dict | None) -> str:
     else:
         desc = f"{deleted.get('exercise', '?')} vom {deleted['logged_at'][:10]}"
     return f"🗑️ Gelöscht: {desc}"
+
+
+def _exercise_keyboard(user_id: int, prefix: str, limit: int = 8) -> dict:
+    summary = db.get_exercise_summary(user_id)
+    names = sorted(summary, key=lambda name: summary[name]["last"], reverse=True)[:limit]
+    return {"inline_keyboard": [[{"text": name, "callback_data": f"{prefix}:{name}"}] for name in names]}
 
 
 def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
@@ -200,7 +230,11 @@ def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
     if text.startswith("/verlauf"):
         exercise = text.removeprefix("/verlauf").strip()
         if not exercise:
-            telegram.send_message(chat_id, "Nutzung: /verlauf <übung>")
+            keyboard = _exercise_keyboard(user_id, "v")
+            if keyboard["inline_keyboard"]:
+                telegram.send_message(chat_id, "Für welche Übung?", reply_markup=keyboard)
+            else:
+                telegram.send_message(chat_id, "Nutzung: /verlauf <übung>")
             return {"ok": True}
         if exercise.lower() in BODYWEIGHT_ALIASES:
             entries = db.get_body_weight_history(user_id)
@@ -229,7 +263,11 @@ def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
     if text.startswith("/chart"):
         exercise = text.removeprefix("/chart").strip()
         if not exercise:
-            telegram.send_message(chat_id, "Nutzung: /chart <übung>")
+            keyboard = _exercise_keyboard(user_id, "c")
+            if keyboard["inline_keyboard"]:
+                telegram.send_message(chat_id, "Für welche Übung?", reply_markup=keyboard)
+            else:
+                telegram.send_message(chat_id, "Nutzung: /chart <übung>")
             return {"ok": True}
         if exercise.lower() in BODYWEIGHT_ALIASES:
             entries = db.get_body_weight_history(user_id, limit=200)
@@ -281,9 +319,12 @@ def dashboard(token: str = "", msg: str = "", view: str = "heute") -> HTMLRespon
         week_start = today - timedelta(days=today.weekday())
         trained_dates = db.get_workout_dates_in_range(user_id, week_start, week_start + timedelta(days=6))
         plan_long, plan_short = db.get_training_plan()
+        weight_delta = db.get_weight_change_in_range(user_id, today - timedelta(days=7), today)
+        last_sets = db.get_last_sets(user_id)
         html = render_dashboard_html(
             recent, token, latest_weight, training_days, summary, week_number, today, trained_dates,
             flash=msg or None, plan_long=plan_long, plan_short=plan_short, view=view,
+            weight_delta=weight_delta, last_sets=last_sets,
         )
         return HTMLResponse(html)
     except Exception:
