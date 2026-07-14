@@ -1,6 +1,6 @@
 # Trainings-Tracker Telegram-Bot — Projektzusammenfassung
 
-_Stand: 2026-07-14 (öffentliches Repo, Dashboard-Redesign, Chat mit Gedächtnis)_
+_Stand: 2026-07-15 (editierbarer Wochenplan, Bequemlichkeits-Features, Python-Version-Fix)_
 
 Persönlicher Fitness-Tracker: Trainingseinheiten werden per Telegram-Nachricht in
 freier Sprache geloggt (z.B. „2 Sätze 8 Wiederholungen 80kg Bankdrücken"), landen in
@@ -28,7 +28,8 @@ Telegram (Handy) --Webhook--> Render (FastAPI) --insert/query--> Supabase (Postg
   Request danach dauert 10–30 s; wird durch externen Ping wach gehalten)
 - **Parsing:** Groq LLM (`llama-3.3-70b-versatile`, kostenlos) mit automatischem
   Regex-Fallback, falls kein API-Key gesetzt ist oder der Call fehlschlägt
-- **Sprache/Framework:** Python 3.12 (in `runtime.txt` gepinnt), FastAPI + Uvicorn
+- **Sprache/Framework:** Python 3.12 (in `.python-version` gepinnt — Render beachtet
+  `runtime.txt` nicht mehr, siehe „Wichtige Fixes"), FastAPI + Uvicorn
 - **Keep-Alive & Erinnerungen:** externer Ping-Dienst (cron-job.org) ruft alle 10 Min
   `/cron/tick` auf — bewusst statt GitHub-Actions-Cron (das hätte das kostenlose
   Minutenkontingent gesprengt)
@@ -53,18 +54,19 @@ app/
   chat.py         Freies Frage-Antwort-Chat via Groq, mit Multi-Turn-Gedächtnis (letzte 3 Paare, 60min Idle-Reset)
   exercises.py    Übungsnamen + Aliase, PLAN_SECTIONS (Tag A/B/C…), SESSION_ONLY_EXERCISES
   db.py           Supabase-Wrapper (Insert/Query/State/Delete)
-  telegram.py     sendMessage / sendPhoto
+  telegram.py     sendMessage (+ reply_markup) / sendPhoto / answerCallbackQuery
   chart.py        Matplotlib-Fortschritts-Charts (ruhige, minimalistische Dark-Palette, Metrik-Fallback)
-  reminders.py    Reine Logik: Reminder, Wochenzähler, Klimmzug-Phasen, Deload, Wochenrückblick
-  dashboard.py    App-artiges Dashboard (Tab-Navigation Heute/Fortschritt/Verlauf, Eingabe-Formular, PWA-Meta-Tags)
+  reminders.py    Reine Logik: Reminder, Wochenzähler, Klimmzug-Phasen, Deload, Wochenrückblick, Gewichts-Delta
+  dashboard.py    App-artiges Dashboard (Tab-Navigation Heute/Fortschritt/Verlauf/Plan, Eingabe-Formular
+                  mit Autocomplete + Wiederholen-Chips, PWA-Meta-Tags)
   static/         PWA-Icons (icon-192.png, icon-512.png)
 sql/schema.sql    Tabellen: workout_logs, body_weight_logs, bot_state
 docs/             Beispiel-Chart fürs README
-tests/            120 Tests (pytest)
+tests/            163 Tests (pytest)
 .github/workflows/test.yml   CI: pytest bei jedem Push/PR
 LICENSE           MIT
 CONTRIBUTING.md   Kurzanleitung für Mitwirkende (Dev-Setup, Tests, eigenen Plan konfigurieren)
-requirements.txt, runtime.txt, .env.example, README.md
+requirements.txt, .python-version, .env.example, README.md
 ```
 
 ---
@@ -75,7 +77,7 @@ requirements.txt, runtime.txt, .env.example, README.md
   duration_min, distance_km, raw_text, logged_at
 - **`body_weight_logs`** — id, telegram_user_id, weight_kg, raw_text, logged_at
 - **`bot_state`** — key/value (last_reminder_date, last_weekly_summary_date,
-  program_start_date, chat_history)
+  program_start_date, chat_history, training_plan)
 
 ---
 
@@ -86,8 +88,8 @@ requirements.txt, runtime.txt, .env.example, README.md
 | _freie Nachricht (Log)_ | Trainings-/Cardio-/Körpergewichts-Eintrag, z.B. „3x8 100kg Kniebeuge", „30 min 5 km Laufen", „Gewicht heute 84,2kg" |
 | _freie Nachricht (Frage)_ | Wird nicht als Log erkannt -> geht als Chat-Frage an Groq, z.B. „Was steht heute an?", „Und morgen?" (merkt sich die letzten 3 Frage-Antwort-Paare; Kontext: Tagesplan + Wochenstand + letzte 50 Einträge) |
 | `/start` | Begrüßung + eigene Telegram-User-ID |
-| `/verlauf <übung>` | Letzte Einträge als Text (auch `/verlauf Gewicht`) |
-| `/chart <übung>` | Fortschritts-Diagramm als Bild (auch `/chart Gewicht`) |
+| `/verlauf [übung]` | Letzte Einträge als Text (auch `/verlauf Gewicht`); ohne Übung Inline-Tastatur mit den zuletzt genutzten Übungen |
+| `/chart [übung]` | Fortschritts-Diagramm als Bild (auch `/chart Gewicht`); ohne Übung Inline-Tastatur |
 | `/programm [datum]` | Programmstart setzen (JJJJ-MM-TT) oder Status anzeigen |
 | `/undo` | Zuletzt geloggten Eintrag löschen |
 
@@ -95,15 +97,24 @@ requirements.txt, runtime.txt, .env.example, README.md
 
 ## Dashboard-Features
 
-- **App-artige Ansicht:** drei Tabs (Heute / Fortschritt / Verlauf) mit fester unterer
-  Tab-Leiste statt einer langen Scroll-Seite. Minimalistischer, ruhiger Dark-Look
-  (warmer Amber-Akzent sehr sparsam, dünne große Zahlen mit tabular-nums, Haarlinien
-  statt schwerer Karten).
-- **Heute:** Tagesplan + Wochennummer groß oben, Schnell-Eingabe, Wochenstreifen
+- **App-artige Ansicht:** vier Tabs (Heute / Fortschritt / Verlauf / Plan) mit fester
+  unterer Tab-Leiste statt einer langen Scroll-Seite. Minimalistischer, ruhiger
+  Dark-Look (warmer Amber-Akzent sehr sparsam, dünne große Zahlen mit tabular-nums,
+  Haarlinien statt schwerer Karten). Aktiver Tab wird server-seitig über `?view=`
+  gesteuert (z.B. nach einem Redirect gezielt auf einem Tab landen).
+- **Heute:** Tagesplan + Wochennummer groß oben, „Zuletzt"-Chips (letzter geloggter
+  Satz je Übung, Antippen füllt das Eingabefeld vor statt neu zu tippen),
+  Schnell-Eingabe mit Übungsnamen-Autocomplete (`<datalist>`), Wochenstreifen
   (heutiger Tag hervorgehoben, getrackte Tage mit ✓), heute geloggte Einträge.
 - **Fortschritt:** Kennzahlen (Gewicht/Woche/Trainingstage), Körpergewichts-Chart mit
-  Zielband, Übungs-Charts gruppiert nach Tag A/B/C/Kickboxen/Ausdauer.
+  Zielband + 7-Tage-Delta (z.B. „↓ 1,6 kg"), Übungs-Charts gruppiert nach
+  Tag A/B/C/Kickboxen/Ausdauer.
 - **Verlauf:** letzte Aktivitäten als editoriale Liste.
+- **Plan:** Wochenplan (Lang-/Kurzform je Wochentag) direkt im Dashboard bearbeiten
+  statt per Code-Deploy in `app/config.py` — liegt als Override in `bot_state`
+  (JSON), fällt pro Tag auf die Config-Defaults zurück, „Zurücksetzen"-Button stellt
+  die Defaults wieder her. Wirkt sich auf Telegram-Erinnerung, Heute-Tab und den
+  LLM-Chat-Kontext aus.
 - **Installierbar als PWA:** `/manifest.webmanifest` + `/sw.js` (No-Op-Service-Worker,
   kein Offline-Caching) + `apple-touch-icon`/Meta-Tags für iOS. "Zum Startbildschirm
   hinzufügen" macht daraus eine App-artige Kachel auf dem Handy.
@@ -183,44 +194,53 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 
 ## Bereits umgesetzte Features (chronologisch, neueste zuerst)
 
-1. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
+1. **Vier Bequemlichkeits-Features** — Übungsnamen-Autocomplete im Eingabefeld,
+   7-Tage-Delta am Gewicht-Chart, „Zuletzt"-Chips zum Wiederholen des letzten Satzes
+   je Übung, Telegram-Inline-Tastaturen für `/verlauf` und `/chart` ohne Argument.
+2. **Dashboard-Routen gegen transiente DB-Fehler abgesichert** — bei einem kurzen
+   Supabase-Netzwerk-Hänger zeigen `/dashboard*`-Routen jetzt eine freundliche
+   Meldung statt der rohen FastAPI-500-Seite (analog zum bestehenden Muster im
+   Webhook).
+3. **Python-Version-Pinning repariert** — Render beachtet `runtime.txt` nicht mehr
+   (Versions-Auswahl umgestellt auf `PYTHON_VERSION`-Env-Var/`.python-version`);
+   Build lief dadurch unbemerkt wieder auf Python 3.14. Behoben durch
+   `.python-version` mit `3.12.10`.
+4. **Editierbarer Wochenplan** — neuer „Plan"-Tab im Dashboard, Wochenplan-Text liegt
+   als Override in `bot_state` (JSON) statt nur in `app/config.py`, Fallback pro Tag
+   auf die Config-Defaults, wirkt sich auf Erinnerung/Heute-Tab/Chat-Kontext aus.
+5. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
    Paare (global in `bot_state`, kein Schema-Change), automatischer Reset nach 60 Min
    Inaktivität.
-2. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
+6. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
    privaten Notizen/echte URLs mehr), `CONTRIBUTING.md`, README mit Feature-Übersicht
    und Beispiel-Chart, GitHub-Beschreibung + Topics gesetzt, Repo ist jetzt **public**.
-3. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
+7. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
    Programmlänge, Zielgewicht, Deload-Fenster, Erinnerungs-Zeiten.
-4. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
+8. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
    (Heute/Fortschritt/Verlauf), minimalistischer Dark-Look, neue Chart-Palette.
-5. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
-6. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
-   auch direkt im Browser möglich (nicht mehr nur per Telegram).
-7. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
-   werden über Groq mit Plan- und Verlaufskontext beantwortet.
-8. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
-9. **Dashboard: Wochenkalender mit echten Wochentagen**
-10. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
-11. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
-12. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
+9. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
+10. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
+    auch direkt im Browser möglich (nicht mehr nur per Telegram).
+11. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
+    werden über Groq mit Plan- und Verlaufskontext beantwortet.
+12. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
+13. **Dashboard: Wochenkalender mit echten Wochentagen**
+14. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
+15. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
+16. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
 
 ---
 
 ## Was als Nächstes ansteht
 
-**Als Nächstes geplant:**
-- **Konfigurierbarer Plan über die App** — Trainingsplan im Dashboard bearbeiten statt
-  in `app/config.py` per Code-Deploy. Größerer Umbau: Plan-Daten müssten aus der
-  statischen Config in die Datenbank wandern (z.B. neue Tabelle oder Erweiterung von
-  `bot_state`), plus eine Edit-Oberfläche im Dashboard. Sinnvoll, sobald der Plan sich
-  öfter ändern soll oder andere Nutzer die App ohne eigenen Deploy anpassen wollen
-  sollen.
-
-**Weitere Ideen (noch nicht terminiert):**
+**Noch nicht terminiert:**
+- **Übungen/Aliase im Dashboard editierbar machen** — welche Übungen zu Tag A/B/C
+  gehören (`PLAN_SECTIONS`) sowie die Erkennungs-Aliase (`EXERCISE_ALIASES`) liegen
+  bisher nur in `app/exercises.py` im Code, dafür ist weiterhin ein Deploy nötig.
+  Größerer Umbau als der bereits umgesetzte Wochenplan-Editor, da Aliase sowohl die
+  Freitext-Erkennung als auch die Dashboard-Gruppierung betreffen.
 - **PR-/Rekord-Erkennung** — Bot meldet „🎉 Neuer Rekord!" bei neuem Bestwert pro Übung
   (Definition klären: höchstes Gewicht oder Volumen = Gewicht × Wiederholungen?).
-- **Delta-Anzeige am Gewicht-Chart** — z.B. „−1,6 kg" als Trend-Kennzahl im
-  Fortschritt-Tab (kleine Ergänzung, Daten sind schon vorhanden).
 - **CSV-Export** vom Dashboard (Daten-Backup / eigene Auswertung).
 - **Foto-Logging** — Foto vom Trainingsgerät-Display schicken, per Vision-Modell
   auslesen (größerer Umbau, andere Groq-Prompt-Pfad nötig).
@@ -237,7 +257,7 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 # venv liegt bereits unter venv/
 venv\Scripts\activate            # Windows
 pip install -r requirements.txt
-pytest                           # 120 Tests
+pytest                           # 163 Tests
 uvicorn app.main:app --reload    # lokaler Server
 ```
 
