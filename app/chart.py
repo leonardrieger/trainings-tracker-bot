@@ -1,7 +1,8 @@
-"""Erzeugt ein Fortschritts-Liniendiagramm (Gewicht oder Distanz über Zeit) als PNG-Bytes.
+"""Erzeugt ein Fortschritts-Liniendiagramm (Gewicht/Distanz/Wiederholungen) als PNG-Bytes.
 
-Farben/Mark-Specs folgen der validierten Dark-Palette (dataviz-Skill): dunkle
-Chart-Surface, ein Blauton als einzige Serie, recessive Gridlines/Achsen.
+Ruhige, minimalistische Dark-Palette passend zum App-Dashboard: dünne Linie in
+gedämpftem Off-White, nur der Endpunkt in Amber betont, dezente Flächenfüllung,
+recessive horizontale Gridlines.
 """
 from __future__ import annotations
 
@@ -11,16 +12,17 @@ from datetime import datetime
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 
-SURFACE = "#1a1a19"
-LINE_COLOR = "#3987e5"
-GRID_COLOR = "#2c2c2a"
-AXIS_COLOR = "#383835"
-INK_PRIMARY = "#ffffff"
-INK_SECONDARY = "#c3c2b7"
-INK_MUTED = "#898781"
-TARGET_BAND_COLOR = "#199e70"
+SURFACE = "#15171a"
+LINE_COLOR = "#c9cbc4"
+ACCENT = "#d8a657"
+GRID_COLOR = "#212429"
+AXIS_COLOR = "#2a2d31"
+INK_SECONDARY = "#a5a7a1"
+INK_MUTED = "#6d6f6a"
+TARGET_BAND_COLOR = "#3f6b52"
 
 
 def render_progress_chart(
@@ -60,29 +62,26 @@ def render_progress_chart(
     points.sort(key=lambda p: p[0])
     dates, values = zip(*points)
 
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=(6, 3.1))
     fig.patch.set_facecolor(SURFACE)
     ax.set_facecolor(SURFACE)
 
     if target_range is not None:
-        ax.axhspan(target_range[0], target_range[1], color=TARGET_BAND_COLOR, alpha=0.15, linewidth=0)
+        ax.axhspan(target_range[0], target_range[1], color=TARGET_BAND_COLOR, alpha=0.16, linewidth=0)
 
+    lo, hi = min(values), max(values)
+    baseline = lo - (hi - lo + 1) * 0.12
+    ax.fill_between(dates, values, baseline, color=LINE_COLOR, alpha=0.05, linewidth=0)
+    ax.plot(dates, values, color=LINE_COLOR, linewidth=1.6, solid_capstyle="round")
+    # Nur der jüngste Punkt wird betont – in Akzentfarbe.
     ax.plot(
-        dates,
-        values,
-        color=LINE_COLOR,
-        linewidth=2,
-        marker="o",
-        markersize=8,
-        markerfacecolor=LINE_COLOR,
-        markeredgecolor=SURFACE,
-        markeredgewidth=1.5,
+        dates[-1], values[-1], marker="o", markersize=6,
+        markerfacecolor=ACCENT, markeredgecolor=SURFACE, markeredgewidth=1.5,
     )
 
-    ax.set_title(f"{exercise} – Fortschritt", color=INK_PRIMARY, fontsize=13, pad=12)
-    ax.set_ylabel(label, color=INK_SECONDARY, fontsize=10)
-    ax.tick_params(colors=INK_MUTED, labelsize=9)
-    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_ylabel(label, color=INK_MUTED, fontsize=9, labelpad=8)
+    ax.tick_params(colors=INK_MUTED, labelsize=8, length=0)
+    ax.grid(True, axis="y", color=GRID_COLOR, linewidth=0.8)
     ax.set_axisbelow(True)
 
     for spine_name, spine in ax.spines.items():
@@ -91,10 +90,11 @@ def render_progress_chart(
         else:
             spine.set_color(AXIS_COLOR)
 
-    fig.autofmt_xdate()
-    fig.tight_layout()
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d.%m"))
+    ax.margins(x=0.02)
+    fig.tight_layout(pad=0.6)
 
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", facecolor=SURFACE)
+    fig.savefig(buf, format="png", facecolor=SURFACE, dpi=150)
     plt.close(fig)
     return buf.getvalue()

@@ -39,7 +39,7 @@ def test_dashboard_mit_richtigem_token_200(monkeypatch):
     assert r.status_code == 200
     assert "Bankdrücken" in r.text
     assert "Tag A" in r.text
-    assert "Noch keine Daten" in r.text
+    assert "Noch keine Gewichtsdaten" in r.text
 
 
 def test_dashboard_chart_ohne_token_401():

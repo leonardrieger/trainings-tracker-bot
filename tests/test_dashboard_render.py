@@ -11,8 +11,8 @@ def test_session_only_uebung_zeigt_zaehler_statt_chart():
     summary = {"Kickboxen": {"count": 5, "last": "2026-07-13T18:00:00"}}
     html = render_dashboard_html([], "token", None, training_days=5, exercise_summary=summary)
     assert "5×" in html
-    assert "zuletzt 2026-07-13" in html
-    assert 'exercise=Kickboxen' not in html
+    assert "zuletzt 13. Jul" in html
+    assert "exercise=Kickboxen" not in html  # kein Chart-Bild für Session-Übungen
 
 
 def test_session_only_aktivitaet_zeigt_absolviert_statt_none():
@@ -33,10 +33,16 @@ def test_session_only_aktivitaet_zeigt_absolviert_statt_none():
     assert "✓ absolviert" in html
 
 
-def test_ungetrackte_uebungen_als_kompakte_zeile_statt_karten():
+def test_ungetrackte_uebungen_als_kompakte_zeile():
     html = render_dashboard_html([], "token", None, training_days=0)
-    assert "Noch nicht getrackt: Kniebeuge" in html
-    assert html.count('class="empty-card"') == 1  # nur die Körpergewicht-Karte
+    assert "Noch nicht getrackt:" in html
+    assert "Kniebeuge" in html
+
+
+def test_leerer_gewichts_zustand_statt_chart():
+    html = render_dashboard_html([], "token", None, training_days=0)
+    assert "Noch keine Gewichtsdaten" in html
+    assert "exercise=Gewicht" not in html
 
 
 def test_alle_plan_uebungen_erscheinen_auch_ohne_daten():
@@ -48,57 +54,56 @@ def test_alle_plan_uebungen_erscheinen_auch_ohne_daten():
 def test_gemischte_sektion_zeigt_karte_und_kompakte_zeile():
     summary = {"Kniebeuge": {"count": 2, "last": "2026-07-14T07:00:00"}}
     html = render_dashboard_html([], "token", None, training_days=1, exercise_summary=summary)
-    assert 'exercise=Kniebeuge' in html
+    assert "exercise=Kniebeuge" in html
     assert "Noch nicht getrackt:" in html
     assert "Bankdrücken" in html.split("Noch nicht getrackt:")[1].split("</p>")[0]
 
 
 def test_chart_karte_hat_onerror_fallback():
-    # Kaputtes Chart-Bild (404) soll durch Textzeile ersetzt werden, kein Fragezeichen
     summary = {"Klimmzüge": {"count": 3, "last": "2026-07-14T07:00:00"}}
     html = render_dashboard_html([], "token", None, training_days=1, exercise_summary=summary)
     assert "onerror=" in html
     assert "Noch keine Diagrammdaten" in html
 
 
-def test_wochen_stat_tile_zeigt_woche():
+def test_wochen_figur_zeigt_woche():
     html = render_dashboard_html([], "token", None, training_days=0, week_number=5)
-    assert "5/12" in html
+    assert "5 / 12" in html
 
 
-def test_wochen_stat_tile_ohne_startdatum():
+def test_wochen_figur_ohne_startdatum():
     html = render_dashboard_html([], "token", None, training_days=0, week_number=None)
-    assert "Programmwoche" in html
+    assert "Woche" in html  # Figur-Label bleibt, Wert ist "–"
 
 
-def test_deload_banner_erscheint_in_woche_7():
+def test_deload_note_erscheint_in_woche_7():
     html = render_dashboard_html([], "token", None, training_days=0, week_number=7)
     assert "Deload" in html
 
 
-def test_kein_deload_banner_in_woche_1():
+def test_kein_deload_in_woche_1():
     html = render_dashboard_html([], "token", None, training_days=0, week_number=1)
     assert "Deload" not in html
 
 
-def test_wochenkalender_zeigt_alle_wochentage():
+def test_wochenstreifen_zeigt_alle_wochentage_und_heutigen_plan():
     montag = date(2026, 7, 20)
     assert montag.weekday() == 0
     html = render_dashboard_html([], "token", None, training_days=0, today=montag)
     for abbr in ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]:
         assert abbr in html
-    assert "Tag A" in html
-    assert "Kickboxen" in html
+    assert "Tag A" in html  # Hero-Titel für Montag
+    assert "Kickboxen" in html  # im Wochenstreifen
 
 
-def test_wochenkalender_hebt_heute_hervor():
+def test_wochenstreifen_hebt_heute_hervor():
     mittwoch = date(2026, 7, 22)
     html = render_dashboard_html([], "token", None, training_days=0, today=mittwoch)
-    assert '<div class="day-tile today">' in html
-    assert "📅 Heute:" in html
+    assert '<div class="day today">' in html
+    assert "Mittwoch ·" in html  # Eyebrow mit vollem Wochentag
 
 
-def test_wochenkalender_zeigt_haken_fuer_trainierte_tage():
+def test_wochenstreifen_zeigt_haken_fuer_trainierte_tage():
     montag = date(2026, 7, 20)
     dienstag = date(2026, 7, 21)
     html = render_dashboard_html(
@@ -107,9 +112,9 @@ def test_wochenkalender_zeigt_haken_fuer_trainierte_tage():
     assert html.count("✓") == 1
 
 
-def test_ohne_today_kein_kalender():
+def test_ohne_today_kein_wochenstreifen():
     html = render_dashboard_html([], "token", None, training_days=0)
-    assert 'class="day-tile' not in html
+    assert '<div class="week-strip">' not in html
 
 
 def test_flash_wird_angezeigt():
@@ -125,8 +130,27 @@ def test_ohne_flash_kein_flash_banner():
 
 def test_log_formular_und_undo_button_vorhanden():
     html = render_dashboard_html([], "mein-token", None, training_days=0)
-    assert '<form class="log-bar" method="post" action="/dashboard/log?token=mein-token">' in html
-    assert '<form class="log-bar" method="post" action="/dashboard/undo?token=mein-token">' in html
+    assert '<form class="quick" method="post" action="/dashboard/log?token=mein-token">' in html
+    assert 'action="/dashboard/undo?token=mein-token"' in html
+
+
+def test_drei_tabs_und_ansichten_vorhanden():
+    html = render_dashboard_html([], "token", None, training_days=0)
+    for view_id in ["view-heute", "view-fortschritt", "view-verlauf"]:
+        assert view_id in html
+    assert html.count('class="tab"') + html.count('class="tab active"') == 3
+
+
+def test_verlauf_zeigt_aktivitaeten_als_liste():
+    recent = [
+        {"type": "workout", "exercise": "Kniebeuge", "sets": 3, "reps": 8, "weight_kg": 87,
+         "distance_km": None, "duration_min": None, "logged_at": "2026-07-13T07:30:00"},
+        {"type": "bodyweight", "weight_kg": 86.4, "logged_at": "2026-07-13T08:00:00"},
+    ]
+    html = render_dashboard_html(recent, "token", None, training_days=1)
+    assert 'class="activity"' in html
+    assert "3×8 · 87 kg" in html
+    assert "86,4 kg" in html  # deutsche Komma-Darstellung
 
 
 def test_pwa_meta_tags_vorhanden():
