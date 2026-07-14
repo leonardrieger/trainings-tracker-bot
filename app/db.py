@@ -121,7 +121,7 @@ def get_training_days_count(telegram_user_id: int) -> int:
     return len({row["logged_at"][:10] for row in response.data})
 
 
-def get_workout_days_in_range(telegram_user_id: int, start: date, end: date) -> int:
+def get_workout_dates_in_range(telegram_user_id: int, start: date, end: date) -> set[str]:
     response = (
         get_client()
         .table(TABLE)
@@ -131,7 +131,11 @@ def get_workout_days_in_range(telegram_user_id: int, start: date, end: date) -> 
         .lt("logged_at", (end + timedelta(days=1)).isoformat())
         .execute()
     )
-    return len({row["logged_at"][:10] for row in response.data})
+    return {row["logged_at"][:10] for row in response.data}
+
+
+def get_workout_days_in_range(telegram_user_id: int, start: date, end: date) -> int:
+    return len(get_workout_dates_in_range(telegram_user_id, start, end))
 
 
 def get_weight_change_in_range(

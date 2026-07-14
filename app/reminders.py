@@ -13,6 +13,19 @@ TRAINING_PLAN: dict[int, str] = {
     6: "Lockerer Dauerlauf (Zone 2) + Mobility",
 }
 
+# Kurzform für kompakte Anzeigen (z.B. Wochenkalender im Dashboard)
+TRAINING_PLAN_SHORT: dict[int, str] = {
+    0: "Tag A",
+    1: "Kickboxen",
+    2: "Tag B",
+    3: "Kickboxen",
+    4: "Tag C",
+    5: "Sparring",
+    6: "Laufen",
+}
+
+WEEKDAY_ABBR = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+
 TAG_B_WEEKDAY = 2  # Mittwoch: Klimmzug-Tag
 
 REMINDER_HOUR = 7

@@ -195,8 +195,13 @@ def dashboard(token: str = "") -> HTMLResponse:
     latest_weight = latest_weight_history[0] if latest_weight_history else None
     training_days = db.get_training_days_count(user_id)
     start_date = db.get_program_start_date()
-    week_number = week_number_for(datetime.now(BERLIN).date(), start_date)
-    html = render_dashboard_html(recent, token, latest_weight, training_days, summary, week_number)
+    today = datetime.now(BERLIN).date()
+    week_number = week_number_for(today, start_date)
+    week_start = today - timedelta(days=today.weekday())
+    trained_dates = db.get_workout_dates_in_range(user_id, week_start, week_start + timedelta(days=6))
+    html = render_dashboard_html(
+        recent, token, latest_weight, training_days, summary, week_number, today, trained_dates
+    )
     return HTMLResponse(html)
 
 

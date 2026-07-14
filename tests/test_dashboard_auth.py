@@ -32,7 +32,9 @@ def test_dashboard_mit_richtigem_token_200(monkeypatch):
         "app.main.db.get_recent_activity", return_value=[]
     ), patch("app.main.db.get_body_weight_history", return_value=[]), patch(
         "app.main.db.get_training_days_count", return_value=3
-    ), patch("app.main.db.get_program_start_date", return_value=None):
+    ), patch("app.main.db.get_program_start_date", return_value=None), patch(
+        "app.main.db.get_workout_dates_in_range", return_value=set()
+    ):
         r = client.get("/dashboard?token=richtig")
     assert r.status_code == 200
     assert "Bankdrücken" in r.text

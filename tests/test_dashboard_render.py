@@ -1,4 +1,5 @@
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -70,3 +71,34 @@ def test_deload_banner_erscheint_in_woche_7():
 def test_kein_deload_banner_in_woche_1():
     html = render_dashboard_html([], "token", None, training_days=0, week_number=1)
     assert "Deload" not in html
+
+
+def test_wochenkalender_zeigt_alle_wochentage():
+    montag = date(2026, 7, 20)
+    assert montag.weekday() == 0
+    html = render_dashboard_html([], "token", None, training_days=0, today=montag)
+    for abbr in ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]:
+        assert abbr in html
+    assert "Tag A" in html
+    assert "Kickboxen" in html
+
+
+def test_wochenkalender_hebt_heute_hervor():
+    mittwoch = date(2026, 7, 22)
+    html = render_dashboard_html([], "token", None, training_days=0, today=mittwoch)
+    assert '<div class="day-tile today">' in html
+    assert "📅 Heute:" in html
+
+
+def test_wochenkalender_zeigt_haken_fuer_trainierte_tage():
+    montag = date(2026, 7, 20)
+    dienstag = date(2026, 7, 21)
+    html = render_dashboard_html(
+        [], "token", None, training_days=1, today=dienstag, trained_dates={montag.isoformat()}
+    )
+    assert html.count("✓") == 1
+
+
+def test_ohne_today_kein_kalender():
+    html = render_dashboard_html([], "token", None, training_days=0)
+    assert 'class="day-tile' not in html

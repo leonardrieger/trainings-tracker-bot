@@ -6,10 +6,17 @@ tabular-nums, Karten mit Hairline-Border, Empty-States statt fehlender Karten.
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
 from urllib.parse import quote
 
 from app.exercises import PLAN_SECTIONS, SESSION_ONLY_EXERCISES
-from app.reminders import PROGRAM_LENGTH_WEEKS, is_deload_week
+from app.reminders import (
+    PROGRAM_LENGTH_WEEKS,
+    TRAINING_PLAN,
+    TRAINING_PLAN_SHORT,
+    WEEKDAY_ABBR,
+    is_deload_week,
+)
 
 TARGET_WEIGHT_RANGE = "87–89 kg"
 
@@ -38,6 +45,19 @@ _STYLE = """
     letter-spacing: 0.04em; margin: 2.25rem 0 0.75rem 0; font-weight: 600;
   }
   .untracked { color: var(--ink-muted); font-size: 0.85rem; margin: 0; }
+  .week-row {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+  .day-tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.6rem 0.3rem; text-align: center;
+  }
+  .day-tile.today { border-color: var(--series-1); border-width: 2px; }
+  .day-abbr { font-size: 0.72rem; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .day-plan { font-size: 0.8rem; color: var(--ink-primary); margin-top: 0.3rem; font-weight: 500; }
+  .day-mark { font-size: 0.78rem; color: #0ca30c; margin-top: 0.3rem; height: 1em; }
+  .today-line { color: var(--ink-secondary); font-size: 0.92rem; margin: 0 0 1.5rem 0; }
   .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; }
   .stat-tile {
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
@@ -80,6 +100,24 @@ _STYLE = """
 
 def _stat_tile(value: str, label: str) -> str:
     return f'<div class="stat-tile"><div class="value">{value}</div><div class="label">{label}</div></div>'
+
+
+def _week_calendar_html(today: date, trained_dates: set[str]) -> str:
+    week_start = today - timedelta(days=today.weekday())
+    tiles = []
+    for weekday in range(7):
+        day = week_start + timedelta(days=weekday)
+        classes = "day-tile" + (" today" if day == today else "")
+        mark = "✓" if day.isoformat() in trained_dates else ""
+        tiles.append(
+            f'<div class="{classes}">'
+            f'<div class="day-abbr">{WEEKDAY_ABBR[weekday]}</div>'
+            f'<div class="day-plan">{TRAINING_PLAN_SHORT[weekday]}</div>'
+            f'<div class="day-mark">{mark}</div>'
+            f"</div>"
+        )
+    today_line = f'<p class="today-line">📅 Heute: {TRAINING_PLAN[today.weekday()]}</p>'
+    return f'<div class="week-row">{"".join(tiles)}</div>{today_line}'
 
 
 def _exercise_card(exercise: str, summary: dict, encoded_token: str) -> str:
@@ -139,10 +177,13 @@ def render_dashboard_html(
     training_days: int,
     exercise_summary: dict[str, dict] | None = None,
     week_number: int | None = None,
+    today: date | None = None,
+    trained_dates: set[str] | None = None,
 ) -> str:
     encoded_token = quote(token)
     summary = exercise_summary or {}
     exercises_with_data = set(summary.keys())
+    week_calendar = _week_calendar_html(today, trained_dates or set()) if today is not None else ""
 
     weight_value = f"{latest_weight['weight_kg']:g} kg" if latest_weight else "–"
     last_activity = recent[0]["logged_at"][:10] if recent else "–"
@@ -205,6 +246,9 @@ def render_dashboard_html(
 <body>
   <h1>Trainings-Tracker</h1>
   <p class="sub">Fortschritt über die 12 Wochen</p>
+
+  {week_calendar}
+
   <p class="tip">Tipp: Einheiten einfach in freier Sprache an den Bot schreiben, z.B. "3 Sätze 8 Wiederholungen 100kg Kniebeuge" oder "30 min 5 km Laufen".</p>
 
   <div class="stat-row">{stat_tiles}</div>
