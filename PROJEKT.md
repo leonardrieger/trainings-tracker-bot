@@ -147,7 +147,12 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 ## Wichtige Fixes/Erkenntnisse während der Entwicklung
 
 - **Render wählte anfangs Python 3.14** → matplotlib hatte dafür keine fertigen Wheels,
-  Build hing beim Kompilieren. Gelöst durch `runtime.txt` mit `python-3.12.10`.
+  Build hing beim Kompilieren. Zunächst gelöst durch `runtime.txt` mit `python-3.12.10`.
+- **`runtime.txt` wird von Render nicht mehr beachtet:** Render hat die Versions-Auswahl
+  umgestellt (Priorität: `PYTHON_VERSION`-Env-Var → `.python-version`-Datei → Default nach
+  Service-Erstellungsdatum) und ignoriert `runtime.txt` inzwischen still, ohne Fehler. Der
+  Build lief dadurch unbemerkt wieder auf Python 3.14 (aktueller Default). Behoben durch
+  `.python-version` mit `3.12.10` statt `runtime.txt`.
 - **Supabase-Bibliothek 2.9.1** kannte das neue Key-Format (`sb_secret_…`) nicht
   („Invalid API key"). Upgrade auf `supabase==2.31.0`.
 - **Alias-Kollision:** „Overhead Press" wurde fälschlich als „Schulterdrücken" erkannt
