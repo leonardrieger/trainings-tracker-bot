@@ -30,12 +30,12 @@ Telegram (Handy) --Webhook--> Render (FastAPI) --insert/query--> Supabase (Postg
   `/cron/tick` auf — bewusst statt GitHub-Actions-Cron (das hätte das kostenlose
   Minutenkontingent gesprengt)
 
-**Repo:** github.com/leonardrieger/trainings-tracker-bot (privat)
+**Repo:** github.com/leonardrieger/trainings-tracker-bot
 
-**Live-URLs:**
-- App/Health: `https://trainings-tracker-bot.onrender.com/`
-- Dashboard: `https://trainings-tracker-bot.onrender.com/dashboard?token=<DASHBOARD_TOKEN>`
-- Cron-Tick: `https://trainings-tracker-bot.onrender.com/cron/tick?token=<CRON_SECRET>`
+**Endpunkte** (unter der eigenen Render-URL, hier `<render-url>`):
+- App/Health: `https://<render-url>.onrender.com/`
+- Dashboard: `https://<render-url>.onrender.com/dashboard?token=<DASHBOARD_TOKEN>`
+- Cron-Tick: `https://<render-url>.onrender.com/cron/tick?token=<CRON_SECRET>`
 
 ---
 
@@ -55,7 +55,7 @@ app/
   dashboard.py    HTML-Dashboard (Stat-Tiles, Wochenkalender, Eingabe-Formular, PWA-Meta-Tags)
   static/         PWA-Icons (icon-192.png, icon-512.png)
 sql/schema.sql    Tabellen: workout_logs, body_weight_logs, bot_state
-tests/            103 Tests (pytest)
+tests/            113 Tests (pytest)
 .github/workflows/test.yml   CI: pytest bei jedem Push/PR
 requirements.txt, runtime.txt, .env.example, README.md
 ```
@@ -161,19 +161,7 @@ _Die echten Werte liegen in der lokalen `.env` (gitignored) und in den Render-En
 
 ---
 
-## OFFENE PUNKTE / TODO
-
-### Muss noch erledigt werden (durch dich)
-1. **`TELEGRAM_WEBHOOK_SECRET` in Render eintragen** — der Wert steht in der lokalen
-   `.env`. Erst danach ist die Webhook-Absicherung scharf geschaltet. (Der Webhook
-   selbst wurde bereits mit `secret_token` neu gesetzt.)
-2. **Secrets rotieren (empfohlen):** `TELEGRAM_BOT_TOKEN` und `GROQ_API_KEY` waren im
-   Entwicklungs-Chat im Klartext sichtbar. Neu generieren:
-   - Bot: @BotFather → `/mybots` → Bot wählen → API Token → Revoke
-   - Groq: console.groq.com → API Keys → neuen Key erstellen
-   - Danach lokale `.env` **und** Render-Env-Vars aktualisieren.
-
-### Mögliche nächste Features (noch nicht umgesetzt)
+## Mögliche nächste Features (noch nicht umgesetzt)
 - **PR-/Rekord-Erkennung:** Bot meldet „🎉 Neuer Rekord!" bei neuem Bestgewicht pro Übung
 - **CSV-Export** vom Dashboard (Daten-Backup / eigene Auswertung)
 - **Multi-Turn-Chat-Gedächtnis:** aktuell ist jede Chat-Frage ein eigenständiger
@@ -187,7 +175,7 @@ _Die echten Werte liegen in der lokalen `.env` (gitignored) und in den Render-En
 # venv liegt bereits unter venv/
 venv\Scripts\activate            # Windows
 pip install -r requirements.txt
-pytest                           # 82 Tests
+pytest                           # 113 Tests
 uvicorn app.main:app --reload    # lokaler Server
 ```
 

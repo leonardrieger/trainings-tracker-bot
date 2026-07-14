@@ -123,7 +123,14 @@ Verlaufs-Chart, sowie die letzten 20 Aktivitäten.
 - `/undo` — löscht den zuletzt geloggten Eintrag (bei Vertipper oder Fehlerkennung).
 - Dashboard: siehe Schritt 10.
 
-**Sicherheitshinweis:** `TELEGRAM_BOT_TOKEN` wurde im Rahmen der Einrichtung im Klartext
-geteilt. Empfehlenswert (kein Muss): über @BotFather (`/mybots` → Bot auswählen →
-API Token → Revoke current token) einmal neu generieren, danach `.env` und Render-Env-Var
-aktualisieren.
+## Sicherheit
+
+Alle Geheimnisse (`TELEGRAM_BOT_TOKEN`, `SUPABASE_SERVICE_KEY`, `GROQ_API_KEY`,
+`CRON_SECRET`, `DASHBOARD_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`) gehören ausschließlich in
+die lokale `.env` (per `.gitignore` ausgeschlossen) und in die Render-Environment-Variablen
+— niemals in den Code committen. Webhook, Dashboard und Cron-Endpoint sind jeweils per
+Token/Secret geschützt.
+
+## Lizenz
+
+MIT — siehe [`LICENSE`](LICENSE).
