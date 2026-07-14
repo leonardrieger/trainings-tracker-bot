@@ -29,6 +29,10 @@ def _callback_update(data: str, user_id: int = 42) -> dict:
     }
 
 
+def _voice_update(file_id: str = "voice1", user_id: int = 42) -> dict:
+    return {"message": {"chat": {"id": user_id}, "from": {"id": user_id}, "voice": {"file_id": file_id}}}
+
+
 def test_start_command():
     with patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("/start"))
@@ -138,6 +142,52 @@ def test_callback_query_von_nicht_erlaubtem_nutzer_wird_ignoriert():
     assert r.status_code == 200
     answer.assert_not_called()
     send.assert_not_called()
+
+
+def test_sprachnachricht_wird_transkribiert_und_geloggt():
+    with patch("app.main.telegram.get_file_bytes", return_value=b"fake-audio"), patch(
+        "app.main.transcribe.transcribe_voice", return_value="3x8 80kg Bankdrücken"
+    ), patch("app.main.db.insert_log") as insert, patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_voice_update())
+    assert r.status_code == 200
+    insert.assert_called_once()
+    assert send.call_count == 2
+    assert "Bankdrücken" in send.call_args_list[0][0][1]  # Echo des Transkripts
+    assert "Bankdrücken" in send.call_args_list[1][0][1]  # Bestätigung
+
+
+def test_sprachnachricht_transkription_fehlgeschlagen():
+    with patch("app.main.telegram.get_file_bytes", return_value=b"fake-audio"), patch(
+        "app.main.transcribe.transcribe_voice", return_value=None
+    ), patch("app.main.db.insert_log") as insert, patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_voice_update())
+    assert r.status_code == 200
+    insert.assert_not_called()
+    send.assert_called_once()
+    assert "nicht verarbeitet" in send.call_args[0][1]
+
+
+def test_sprachnachricht_von_nicht_erlaubtem_nutzer_wird_ignoriert():
+    with patch("app.main.telegram.get_file_bytes") as get_bytes, patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_voice_update(user_id=999))
+    assert r.status_code == 200
+    get_bytes.assert_not_called()
+    send.assert_not_called()
+
+
+def test_sprachnachricht_nicht_erkannt_landet_im_chat():
+    with patch("app.main.telegram.get_file_bytes", return_value=b"fake-audio"), patch(
+        "app.main.transcribe.transcribe_voice", return_value="Was steht heute an?"
+    ), patch("app.main.chat.answer_question", return_value="Heute: Kickboxen.") as answer_question, patch(
+        "app.main.db.get_program_start_date", return_value=None
+    ), patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_voice_update())
+    assert r.status_code == 200
+    answer_question.assert_called_once()
+    assert send.call_count == 2
+    assert send.call_args_list[1][0][1] == "Heute: Kickboxen."
 
 
 def test_programm_setzen():

@@ -1,6 +1,7 @@
 # Trainings-Tracker Telegram-Bot — Projektzusammenfassung
 
-_Stand: 2026-07-15 (editierbarer Wochenplan, Bequemlichkeits-Features, Python-Version-Fix)_
+_Stand: 2026-07-15 (Sprachnachrichten-Logging, editierbarer Wochenplan,
+Bequemlichkeits-Features, Python-Version-Fix)_
 
 Persönlicher Fitness-Tracker: Trainingseinheiten werden per Telegram-Nachricht in
 freier Sprache geloggt (z.B. „2 Sätze 8 Wiederholungen 80kg Bankdrücken"), landen in
@@ -54,7 +55,8 @@ app/
   chat.py         Freies Frage-Antwort-Chat via Groq, mit Multi-Turn-Gedächtnis (letzte 3 Paare, 60min Idle-Reset)
   exercises.py    Übungsnamen + Aliase, PLAN_SECTIONS (Tag A/B/C…), SESSION_ONLY_EXERCISES
   db.py           Supabase-Wrapper (Insert/Query/State/Delete)
-  telegram.py     sendMessage (+ reply_markup) / sendPhoto / answerCallbackQuery
+  telegram.py     sendMessage (+ reply_markup) / sendPhoto / answerCallbackQuery / Datei-Download
+  transcribe.py   Sprachnachrichten-Transkription via Groq Whisper (kostenlos), kein Fallback bei Fehler
   chart.py        Matplotlib-Fortschritts-Charts (ruhige, minimalistische Dark-Palette, Metrik-Fallback)
   reminders.py    Reine Logik: Reminder, Wochenzähler, Klimmzug-Phasen, Deload, Wochenrückblick, Gewichts-Delta
   dashboard.py    App-artiges Dashboard (Tab-Navigation Heute/Fortschritt/Verlauf/Plan, Eingabe-Formular
@@ -62,7 +64,7 @@ app/
   static/         PWA-Icons (icon-192.png, icon-512.png)
 sql/schema.sql    Tabellen: workout_logs, body_weight_logs, bot_state
 docs/             Beispiel-Chart fürs README
-tests/            163 Tests (pytest)
+tests/            172 Tests (pytest)
 .github/workflows/test.yml   CI: pytest bei jedem Push/PR
 LICENSE           MIT
 CONTRIBUTING.md   Kurzanleitung für Mitwirkende (Dev-Setup, Tests, eigenen Plan konfigurieren)
@@ -87,6 +89,7 @@ requirements.txt, .python-version, .env.example, README.md
 |---|---|
 | _freie Nachricht (Log)_ | Trainings-/Cardio-/Körpergewichts-Eintrag, z.B. „3x8 100kg Kniebeuge", „30 min 5 km Laufen", „Gewicht heute 84,2kg" |
 | _freie Nachricht (Frage)_ | Wird nicht als Log erkannt -> geht als Chat-Frage an Groq, z.B. „Was steht heute an?", „Und morgen?" (merkt sich die letzten 3 Frage-Antwort-Paare; Kontext: Tagesplan + Wochenstand + letzte 50 Einträge) |
+| _Sprachnachricht_ | Wird via Groq Whisper transkribiert (kostenlos), Transkript kommt als Echo zurück und durchläuft danach dieselbe Log-/Chat-Erkennung wie eine getippte Nachricht |
 | `/start` | Begrüßung + eigene Telegram-User-ID |
 | `/verlauf [übung]` | Letzte Einträge als Text (auch `/verlauf Gewicht`); ohne Übung Inline-Tastatur mit den zuletzt genutzten Übungen |
 | `/chart [übung]` | Fortschritts-Diagramm als Bild (auch `/chart Gewicht`); ohne Übung Inline-Tastatur |
@@ -144,7 +147,7 @@ requirements.txt, .python-version, .env.example, README.md
 | `TELEGRAM_BOT_TOKEN` | Bot-Token von @BotFather |
 | `SUPABASE_URL` | Supabase Projekt-URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service_role-Key (geheim!) |
-| `GROQ_API_KEY` | Groq-API-Key (optional; ohne → Regex-Fallback / Chat-Fallback) |
+| `GROQ_API_KEY` | Groq-API-Key (optional; ohne → Regex-Fallback / Chat-Fallback; Sprachnachrichten-Transkription funktioniert ganz ohne Fallback nicht) |
 | `ALLOWED_TELEGRAM_USER_ID` | Eigene Telegram-User-ID (nur diese wird verarbeitet) |
 | `CRON_SECRET` | Schützt `/cron/tick` |
 | `DASHBOARD_TOKEN` | Schützt `/dashboard`, `/manifest.webmanifest` |
@@ -194,40 +197,46 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 
 ## Bereits umgesetzte Features (chronologisch, neueste zuerst)
 
-1. **Vier Bequemlichkeits-Features** — Übungsnamen-Autocomplete im Eingabefeld,
+1. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
+   Tippen. Transkription via Groq Whisper (kostenlos), rohes Transkript kommt immer
+   zuerst als Echo zurück (Transparenz bei möglichen Fehltranskriptionen deutscher
+   Fachbegriffe), danach dieselbe Erkennungs-/Bestätigungs-/Chat-Fallback-Pipeline wie
+   bei getippten Nachrichten. Kein Fallback bei Transkriptions-Fehlern möglich (anders
+   als beim Text-Parsing) — eigene Fehlermeldung dafür.
+3. **Vier Bequemlichkeits-Features** — Übungsnamen-Autocomplete im Eingabefeld,
    7-Tage-Delta am Gewicht-Chart, „Zuletzt"-Chips zum Wiederholen des letzten Satzes
    je Übung, Telegram-Inline-Tastaturen für `/verlauf` und `/chart` ohne Argument.
-2. **Dashboard-Routen gegen transiente DB-Fehler abgesichert** — bei einem kurzen
+4. **Dashboard-Routen gegen transiente DB-Fehler abgesichert** — bei einem kurzen
    Supabase-Netzwerk-Hänger zeigen `/dashboard*`-Routen jetzt eine freundliche
    Meldung statt der rohen FastAPI-500-Seite (analog zum bestehenden Muster im
    Webhook).
-3. **Python-Version-Pinning repariert** — Render beachtet `runtime.txt` nicht mehr
+5. **Python-Version-Pinning repariert** — Render beachtet `runtime.txt` nicht mehr
    (Versions-Auswahl umgestellt auf `PYTHON_VERSION`-Env-Var/`.python-version`);
    Build lief dadurch unbemerkt wieder auf Python 3.14. Behoben durch
    `.python-version` mit `3.12.10`.
-4. **Editierbarer Wochenplan** — neuer „Plan"-Tab im Dashboard, Wochenplan-Text liegt
+6. **Editierbarer Wochenplan** — neuer „Plan"-Tab im Dashboard, Wochenplan-Text liegt
    als Override in `bot_state` (JSON) statt nur in `app/config.py`, Fallback pro Tag
    auf die Config-Defaults, wirkt sich auf Erinnerung/Heute-Tab/Chat-Kontext aus.
-5. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
+7. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
    Paare (global in `bot_state`, kein Schema-Change), automatischer Reset nach 60 Min
    Inaktivität.
-6. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
+8. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
    privaten Notizen/echte URLs mehr), `CONTRIBUTING.md`, README mit Feature-Übersicht
    und Beispiel-Chart, GitHub-Beschreibung + Topics gesetzt, Repo ist jetzt **public**.
-7. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
+9. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
    Programmlänge, Zielgewicht, Deload-Fenster, Erinnerungs-Zeiten.
-8. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
-   (Heute/Fortschritt/Verlauf), minimalistischer Dark-Look, neue Chart-Palette.
-9. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
-10. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
+10. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
+    (Heute/Fortschritt/Verlauf), minimalistischer Dark-Look, neue Chart-Palette.
+11. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
+12. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
     auch direkt im Browser möglich (nicht mehr nur per Telegram).
-11. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
+13. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
     werden über Groq mit Plan- und Verlaufskontext beantwortet.
-12. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
-13. **Dashboard: Wochenkalender mit echten Wochentagen**
-14. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
-15. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
-16. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
+14. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
+15. **Dashboard: Wochenkalender mit echten Wochentagen**
+16. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
+17. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
+18. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
 
 ---
 
@@ -257,7 +266,7 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 # venv liegt bereits unter venv/
 venv\Scripts\activate            # Windows
 pip install -r requirements.txt
-pytest                           # 163 Tests
+pytest                           # 172 Tests
 uvicorn app.main:app --reload    # lokaler Server
 ```
 

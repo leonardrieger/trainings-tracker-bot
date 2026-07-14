@@ -13,7 +13,7 @@ from fastapi import FastAPI, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import chat, db, telegram
+from app import chat, db, telegram, transcribe
 from app.chart import render_progress_chart
 from app.config import TARGET_WEIGHT_MAX, TARGET_WEIGHT_MIN
 from app.dashboard import render_dashboard_html
@@ -50,6 +50,9 @@ def _dashboard_authorized(token: str) -> bool:
 
 
 _DASHBOARD_ERROR_MSG = "⚠️ Kurzer Hänger — bitte gleich nochmal versuchen."
+_VOICE_FALLBACK_TEXT = (
+    "🎤 Sprachnachricht konnte nicht verarbeitet werden. Versuch's nochmal oder tipp den Eintrag."
+)
 
 
 def _dashboard_redirect(token: str, msg: str, view: str | None = None) -> RedirectResponse:
@@ -131,6 +134,24 @@ def _safe_handle_message(chat_id: int, user_id: int, text: str) -> dict:
         return {"ok": True}
 
 
+def _handle_voice_message(chat_id: int, user_id: int, file_id: str) -> dict:
+    try:
+        audio_bytes = telegram.get_file_bytes(file_id)
+        transcript = transcribe.transcribe_voice(audio_bytes)
+    except Exception:
+        transcript = None
+
+    if not transcript:
+        telegram.send_message(chat_id, _VOICE_FALLBACK_TEXT)
+        return {"ok": True}
+
+    # Rohes Transkript immer zuerst zeigen - deutsche Fachbegriffe (z.B. "Klimmzüge")
+    # kann Whisper verhören, und ohne dieses Echo wäre ein falsch erkannter Eintrag
+    # oder eine an den Chat weitergereichte Fehltranskription nicht nachvollziehbar.
+    telegram.send_message(chat_id, f'🎤 „{transcript}"')
+    return _safe_handle_message(chat_id, user_id, transcript)
+
+
 @app.post("/webhook")
 async def webhook(request: Request) -> dict:
     # Nur Telegram kennt das beim setWebhook hinterlegte Secret - gefälschte
@@ -158,17 +179,23 @@ async def webhook(request: Request) -> dict:
         return _safe_handle_message(chat_id, user_id, f"{command} {exercise}")
 
     message = update.get("message")
-    if not message or "text" not in message:
+    if not message:
         return {"ok": True}
 
     chat_id = message["chat"]["id"]
     user_id = message["from"]["id"]
-    text = message["text"].strip()
 
-    if user_id != _allowed_user_id():
-        return {"ok": True}
+    if "text" in message:
+        if user_id != _allowed_user_id():
+            return {"ok": True}
+        return _safe_handle_message(chat_id, user_id, message["text"].strip())
 
-    return _safe_handle_message(chat_id, user_id, text)
+    if "voice" in message:
+        if user_id != _allowed_user_id():
+            return {"ok": True}
+        return _handle_voice_message(chat_id, user_id, message["voice"]["file_id"])
+
+    return {"ok": True}
 
 
 def _undo_message(deleted: dict | None) -> str:
