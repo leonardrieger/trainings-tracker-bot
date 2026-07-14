@@ -45,6 +45,14 @@ def test_dashboard_mit_richtigem_token_200(monkeypatch):
     assert "Noch keine Gewichtsdaten" in r.text
 
 
+def test_dashboard_bei_db_fehler_freundliche_fehlerseite_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.get_exercise_summary", side_effect=Exception("supabase down")):
+        r = client.get("/dashboard?token=richtig")
+    assert r.status_code == 503
+    assert "Kurzer Hänger" in r.text
+
+
 def test_dashboard_chart_ohne_token_401():
     r = client.get("/dashboard/chart.png?exercise=Bankdrücken")
     assert r.status_code == 401
@@ -55,6 +63,13 @@ def test_dashboard_chart_mit_token_aber_keine_daten_404(monkeypatch):
     with patch("app.main.db.get_history", return_value=[]):
         r = client.get("/dashboard/chart.png?exercise=Bankdrücken&token=richtig")
     assert r.status_code == 404
+
+
+def test_dashboard_chart_bei_db_fehler_503_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.get_history", side_effect=Exception("supabase down")):
+        r = client.get("/dashboard/chart.png?exercise=Bankdrücken&token=richtig")
+    assert r.status_code == 503
 
 
 def test_dashboard_log_ohne_token_401():
@@ -88,6 +103,18 @@ def test_dashboard_log_nicht_erkannter_text_speichert_nicht(monkeypatch):
     assert "Nicht+erkannt" in r.headers["location"] or "Nicht%20erkannt" in r.headers["location"]
 
 
+def test_dashboard_log_bei_db_fehler_redirect_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.insert_log", side_effect=Exception("supabase down")):
+        r = client.post(
+            "/dashboard/log?token=richtig",
+            data={"text": "3x8 80kg Bankdrücken"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
+
+
 def test_dashboard_undo_ohne_token_401():
     r = client.post("/dashboard/undo")
     assert r.status_code == 401
@@ -101,6 +128,14 @@ def test_dashboard_undo_mit_token(monkeypatch):
     assert r.status_code == 303
     delete.assert_called_once()
     assert "Gel%C3%B6scht" in r.headers["location"] or "Gelöscht" in r.headers["location"]
+
+
+def test_dashboard_undo_bei_db_fehler_redirect_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.delete_last_entry", side_effect=Exception("supabase down")):
+        r = client.post("/dashboard/undo?token=richtig", follow_redirects=False)
+    assert r.status_code == 303
+    assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
 
 
 def _plan_form_data(**overrides) -> dict:
@@ -157,6 +192,17 @@ def test_dashboard_plan_leere_kurzform_faellt_auf_langform_zurueck(monkeypatch):
     assert short_plan[5] == "Langform 5"
 
 
+def test_dashboard_plan_bei_db_fehler_redirect_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.set_training_plan", side_effect=Exception("supabase down")):
+        r = client.post(
+            "/dashboard/plan?token=richtig", data=_plan_form_data(), follow_redirects=False
+        )
+    assert r.status_code == 303
+    assert "view=plan" in r.headers["location"]
+    assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
+
+
 def test_dashboard_plan_reset_ohne_token_401():
     r = client.post("/dashboard/plan/reset")
     assert r.status_code == 401
@@ -169,6 +215,15 @@ def test_dashboard_plan_reset_setzt_zurueck(monkeypatch):
     assert r.status_code == 303
     reset_plan.assert_called_once()
     assert "view=plan" in r.headers["location"]
+
+
+def test_dashboard_plan_reset_bei_db_fehler_redirect_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.reset_training_plan", side_effect=Exception("supabase down")):
+        r = client.post("/dashboard/plan/reset?token=richtig", follow_redirects=False)
+    assert r.status_code == 303
+    assert "view=plan" in r.headers["location"]
+    assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
 
 
 def test_manifest_ohne_token_401():

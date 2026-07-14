@@ -49,6 +49,30 @@ def _dashboard_authorized(token: str) -> bool:
     return bool(expected) and token == expected
 
 
+_DASHBOARD_ERROR_MSG = "⚠️ Kurzer Hänger — bitte gleich nochmal versuchen."
+
+
+def _dashboard_redirect(token: str, msg: str, view: str | None = None) -> RedirectResponse:
+    url = f"/dashboard?token={quote(token)}&msg={quote(msg)}"
+    if view:
+        url += f"&view={view}"
+    return RedirectResponse(url, status_code=303)
+
+
+def _dashboard_error_page() -> HTMLResponse:
+    # Fällt bei transienten Fehlern (z.B. kurzer Netzwerk-Hänger zu Supabase) auf eine
+    # einfache Meldung statt der rohen FastAPI-500-Seite zurück.
+    return HTMLResponse(
+        '<!doctype html><html lang="de"><body style="background:#0e0f11;color:#f3f4f1;'
+        "font-family:-apple-system,'Segoe UI',system-ui,sans-serif;display:grid;place-items:center;"
+        'height:100vh;margin:0;text-align:center;padding:1.5rem">'
+        f"<div><p>{_DASHBOARD_ERROR_MSG}</p>"
+        '<p><a href="javascript:location.reload()" style="color:#d8a657">Nochmal versuchen</a></p>'
+        "</div></body></html>",
+        status_code=503,
+    )
+
+
 @app.get("/")
 def health() -> dict:
     return {"status": "ok"}
@@ -244,100 +268,122 @@ def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
 def dashboard(token: str = "", msg: str = "", view: str = "heute") -> HTMLResponse:
     if not _dashboard_authorized(token):
         return HTMLResponse("Unauthorized", status_code=401)
-    user_id = _allowed_user_id()
-    summary = db.get_exercise_summary(user_id)
-    recent = db.get_recent_activity(user_id, limit=20)
-    latest_weight_history = db.get_body_weight_history(user_id, limit=1)
-    latest_weight = latest_weight_history[0] if latest_weight_history else None
-    training_days = db.get_training_days_count(user_id)
-    start_date = db.get_program_start_date()
-    today = datetime.now(BERLIN).date()
-    week_number = week_number_for(today, start_date)
-    week_start = today - timedelta(days=today.weekday())
-    trained_dates = db.get_workout_dates_in_range(user_id, week_start, week_start + timedelta(days=6))
-    plan_long, plan_short = db.get_training_plan()
-    html = render_dashboard_html(
-        recent, token, latest_weight, training_days, summary, week_number, today, trained_dates,
-        flash=msg or None, plan_long=plan_long, plan_short=plan_short, view=view,
-    )
-    return HTMLResponse(html)
+    try:
+        user_id = _allowed_user_id()
+        summary = db.get_exercise_summary(user_id)
+        recent = db.get_recent_activity(user_id, limit=20)
+        latest_weight_history = db.get_body_weight_history(user_id, limit=1)
+        latest_weight = latest_weight_history[0] if latest_weight_history else None
+        training_days = db.get_training_days_count(user_id)
+        start_date = db.get_program_start_date()
+        today = datetime.now(BERLIN).date()
+        week_number = week_number_for(today, start_date)
+        week_start = today - timedelta(days=today.weekday())
+        trained_dates = db.get_workout_dates_in_range(user_id, week_start, week_start + timedelta(days=6))
+        plan_long, plan_short = db.get_training_plan()
+        html = render_dashboard_html(
+            recent, token, latest_weight, training_days, summary, week_number, today, trained_dates,
+            flash=msg or None, plan_long=plan_long, plan_short=plan_short, view=view,
+        )
+        return HTMLResponse(html)
+    except Exception:
+        logging.exception("Fehler beim Laden des Dashboards")
+        return _dashboard_error_page()
 
 
 @app.get("/dashboard/chart.png")
 def dashboard_chart(exercise: str, token: str = "") -> Response:
     if not _dashboard_authorized(token):
         return Response(status_code=401)
-    user_id = _allowed_user_id()
-    if exercise.lower() in BODYWEIGHT_ALIASES:
-        entries = db.get_body_weight_history(user_id, limit=200)
-        image = render_progress_chart("Körpergewicht", entries, target_range=BODYWEIGHT_TARGET_RANGE)
-    else:
-        entries = db.get_history(user_id, exercise, limit=200)
-        image = render_progress_chart(exercise, entries)
-    if image is None:
-        return Response(status_code=404)
-    return Response(content=image, media_type="image/png")
+    try:
+        user_id = _allowed_user_id()
+        if exercise.lower() in BODYWEIGHT_ALIASES:
+            entries = db.get_body_weight_history(user_id, limit=200)
+            image = render_progress_chart("Körpergewicht", entries, target_range=BODYWEIGHT_TARGET_RANGE)
+        else:
+            entries = db.get_history(user_id, exercise, limit=200)
+            image = render_progress_chart(exercise, entries)
+        if image is None:
+            return Response(status_code=404)
+        return Response(content=image, media_type="image/png")
+    except Exception:
+        # Dashboard hat für kaputte Chart-Bilder bereits einen onerror-Textfallback,
+        # ein sauberer 503 reicht hier also aus statt einer rohen 500-Seite.
+        logging.exception("Fehler beim Rendern des Charts für %r", exercise)
+        return Response(status_code=503)
 
 
 @app.post("/dashboard/log")
 def dashboard_log(text: str = Form(...), token: str = "") -> Response:
     if not _dashboard_authorized(token):
         return Response(status_code=401)
-    user_id = _allowed_user_id()
-    parsed = parse_message(text)
-    if parsed.recognized:
-        if parsed.record_type == "bodyweight":
-            db.insert_body_weight(user_id, parsed.weight_kg, parsed.raw_text)
+    try:
+        user_id = _allowed_user_id()
+        parsed = parse_message(text)
+        if parsed.recognized:
+            if parsed.record_type == "bodyweight":
+                db.insert_body_weight(user_id, parsed.weight_kg, parsed.raw_text)
+            else:
+                db.insert_log(user_id, parsed)
+            msg = parsed.confirmation_text()
         else:
-            db.insert_log(user_id, parsed)
-        msg = parsed.confirmation_text()
-    else:
-        msg = f'⚠️ Nicht erkannt: "{text}". Versuch\'s z.B. mit "3x8 100kg Kniebeuge".'
-    return RedirectResponse(f"/dashboard?token={quote(token)}&msg={quote(msg)}", status_code=303)
+            msg = f'⚠️ Nicht erkannt: "{text}". Versuch\'s z.B. mit "3x8 100kg Kniebeuge".'
+        return _dashboard_redirect(token, msg)
+    except Exception:
+        logging.exception("Fehler beim Speichern des Log-Eintrags: %r", text)
+        return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG)
 
 
 @app.post("/dashboard/undo")
 def dashboard_undo(token: str = "") -> Response:
     if not _dashboard_authorized(token):
         return Response(status_code=401)
-    deleted = db.delete_last_entry(_allowed_user_id())
-    msg = _undo_message(deleted)
-    return RedirectResponse(f"/dashboard?token={quote(token)}&msg={quote(msg)}", status_code=303)
+    try:
+        deleted = db.delete_last_entry(_allowed_user_id())
+        return _dashboard_redirect(token, _undo_message(deleted))
+    except Exception:
+        logging.exception("Fehler beim Rückgängig-Machen des letzten Eintrags")
+        return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG)
 
 
 @app.post("/dashboard/plan")
 async def dashboard_plan_save(request: Request, token: str = "") -> Response:
     if not _dashboard_authorized(token):
         return Response(status_code=401)
-    form = await request.form()
+    try:
+        form = await request.form()
 
-    long_plan: dict[int, str] = {}
-    for day in range(7):
-        value = str(form.get(f"long_{day}", "")).strip()
-        if not value:
-            msg = "⚠️ Alle Wochentage brauchen einen Langform-Text."
-            return RedirectResponse(
-                f"/dashboard?token={quote(token)}&msg={quote(msg)}&view=plan", status_code=303
-            )
-        long_plan[day] = value
+        long_plan: dict[int, str] = {}
+        for day in range(7):
+            value = str(form.get(f"long_{day}", "")).strip()
+            if not value:
+                return _dashboard_redirect(
+                    token, "⚠️ Alle Wochentage brauchen einen Langform-Text.", view="plan"
+                )
+            long_plan[day] = value
 
-    short_plan: dict[int, str] = {}
-    for day in range(7):
-        value = str(form.get(f"short_{day}", "")).strip()
-        short_plan[day] = value or long_plan[day]
+        short_plan: dict[int, str] = {}
+        for day in range(7):
+            value = str(form.get(f"short_{day}", "")).strip()
+            short_plan[day] = value or long_plan[day]
 
-    db.set_training_plan(long_plan, short_plan)
-    msg = "✅ Wochenplan gespeichert."
-    return RedirectResponse(f"/dashboard?token={quote(token)}&msg={quote(msg)}&view=plan", status_code=303)
+        db.set_training_plan(long_plan, short_plan)
+        return _dashboard_redirect(token, "✅ Wochenplan gespeichert.", view="plan")
+    except Exception:
+        logging.exception("Fehler beim Speichern des Wochenplans")
+        return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG, view="plan")
 
 
 @app.post("/dashboard/plan/reset")
 def dashboard_plan_reset(token: str = "") -> Response:
     if not _dashboard_authorized(token):
         return Response(status_code=401)
-    db.reset_training_plan()
-    msg = "↺ Wochenplan auf Standard zurückgesetzt."
-    return RedirectResponse(f"/dashboard?token={quote(token)}&msg={quote(msg)}&view=plan", status_code=303)
+    try:
+        db.reset_training_plan()
+        return _dashboard_redirect(token, "↺ Wochenplan auf Standard zurückgesetzt.", view="plan")
+    except Exception:
+        logging.exception("Fehler beim Zurücksetzen des Wochenplans")
+        return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG, view="plan")
 
 
 @app.get("/sw.js")
