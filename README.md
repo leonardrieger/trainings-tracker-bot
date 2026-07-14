@@ -72,8 +72,8 @@ repository").
    - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 4. Unter **Environment** die Variablen aus `.env.example` eintragen
    (`TELEGRAM_BOT_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GROQ_API_KEY`,
-   `CRON_SECRET`, `DASHBOARD_TOKEN`, `ALLOWED_TELEGRAM_USER_ID` — letztere zunächst leer
-   lassen, siehe Schritt 7).
+   `CRON_SECRET`, `DASHBOARD_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
+   `ALLOWED_TELEGRAM_USER_ID` — letztere zunächst leer lassen, siehe Schritt 7).
 5. Deployen, Render-URL notieren (z.B. `https://dein-bot.onrender.com`).
 
 ## 7. Eigene Telegram-User-ID herausfinden
@@ -86,10 +86,11 @@ Service neu deployen lassen.
 
 ## 8. Telegram-Webhook setzen
 
-Einmalig im eigenen Terminal (Token und Render-URL ersetzen):
+Einmalig im eigenen Terminal (Token, Render-URL und Webhook-Secret ersetzen —
+das `secret_token` sorgt dafür, dass nur echte Telegram-Requests akzeptiert werden):
 
 ```bash
-curl "https://api.telegram.org/bot<DEIN_TOKEN>/setWebhook?url=https://dein-bot.onrender.com/webhook"
+curl "https://api.telegram.org/bot<DEIN_TOKEN>/setWebhook?url=https://dein-bot.onrender.com/webhook&secret_token=<TELEGRAM_WEBHOOK_SECRET>"
 ```
 
 Antwort sollte `"ok":true` enthalten.
@@ -119,6 +120,7 @@ Verlaufs-Chart, sowie die letzten 20 Aktivitäten.
 - Cardio: `30 min 5 km Laufen`.
 - `/verlauf Kniebeuge` (oder `/verlauf Gewicht`) — letzte Einträge als Text.
 - `/chart Kniebeuge` (oder `/chart Gewicht`) — Liniendiagramm als Bild.
+- `/undo` — löscht den zuletzt geloggten Eintrag (bei Vertipper oder Fehlerkennung).
 - Dashboard: siehe Schritt 10.
 
 **Sicherheitshinweis:** `TELEGRAM_BOT_TOKEN` wurde im Rahmen der Einrichtung im Klartext

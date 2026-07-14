@@ -157,6 +157,33 @@ def get_weight_change_in_range(
     return response.data[0]["weight_kg"], response.data[-1]["weight_kg"]
 
 
+def delete_last_entry(telegram_user_id: int) -> dict | None:
+    """Löscht den zuletzt geloggten Eintrag (Workout oder Körpergewicht) und gibt ihn zurück."""
+    last_workout = (
+        get_client()
+        .table(TABLE)
+        .select("*")
+        .eq("telegram_user_id", telegram_user_id)
+        .order("logged_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    last_weight = get_body_weight_history(telegram_user_id, limit=1)
+
+    candidates: list[tuple[str, str, dict]] = []
+    if last_workout:
+        candidates.append(("workout", TABLE, last_workout[0]))
+    if last_weight:
+        candidates.append(("bodyweight", BODY_WEIGHT_TABLE, last_weight[0]))
+    if not candidates:
+        return None
+
+    kind, table, row = max(candidates, key=lambda c: c[2]["logged_at"])
+    get_client().table(table).delete().eq("id", row["id"]).execute()
+    return {"type": kind, **row}
+
+
 def get_state(key: str) -> str | None:
     response = get_client().table(STATE_TABLE).select("value").eq("key", key).execute()
     return response.data[0]["value"] if response.data else None

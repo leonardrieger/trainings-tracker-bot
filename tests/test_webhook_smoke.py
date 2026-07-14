@@ -86,3 +86,71 @@ def test_programm_status_ohne_argument():
         r = client.post("/webhook", json=_update("/programm"))
         assert r.status_code == 200
         assert "Noch kein Startdatum" in send.call_args[0][1]
+
+
+def test_webhook_secret_fehlt_im_header_wird_ignoriert(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "geheim")
+    with patch("app.main.db.insert_log") as insert, patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_update("3x8 80kg Bankdrücken"))
+        assert r.status_code == 200
+        insert.assert_not_called()
+        send.assert_not_called()
+
+
+def test_webhook_secret_korrekt_wird_verarbeitet(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "geheim")
+    with patch("app.main.db.insert_log") as insert, patch("app.main.telegram.send_message"):
+        r = client.post(
+            "/webhook",
+            json=_update("3x8 80kg Bankdrücken"),
+            headers={"X-Telegram-Bot-Api-Secret-Token": "geheim"},
+        )
+        assert r.status_code == 200
+        insert.assert_called_once()
+
+
+def test_db_fehler_fuehrt_zu_freundlicher_meldung_statt_500():
+    with patch("app.main.db.insert_log", side_effect=Exception("supabase down")), patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_update("3x8 80kg Bankdrücken"))
+        assert r.status_code == 200
+        send.assert_called_once()
+        assert "schiefgelaufen" in send.call_args[0][1]
+
+
+def test_undo_loescht_letzten_eintrag():
+    deleted = {
+        "type": "workout",
+        "exercise": "Bankdrücken",
+        "sets": 3,
+        "reps": 8,
+        "weight_kg": 80,
+        "logged_at": "2026-07-14T10:00:00",
+    }
+    with patch("app.main.db.delete_last_entry", return_value=deleted) as delete, patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_update("/undo"))
+        assert r.status_code == 200
+        delete.assert_called_once_with(42)
+        assert "🗑️ Gelöscht: Bankdrücken vom 2026-07-14" == send.call_args[0][1]
+
+
+def test_undo_bodyweight_eintrag():
+    deleted = {"type": "bodyweight", "weight_kg": 84.2, "logged_at": "2026-07-14T08:00:00"}
+    with patch("app.main.db.delete_last_entry", return_value=deleted), patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_update("/undo"))
+        assert r.status_code == 200
+        assert "Körpergewicht 84.2kg" in send.call_args[0][1]
+
+
+def test_undo_ohne_eintraege():
+    with patch("app.main.db.delete_last_entry", return_value=None), patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_update("/undo"))
+        assert r.status_code == 200
+        assert "Nichts zum Löschen" in send.call_args[0][1]

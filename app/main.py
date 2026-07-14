@@ -1,6 +1,7 @@
 """FastAPI-App: Telegram-Webhook-Endpoint + Command-Routing."""
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -76,6 +77,12 @@ def cron_tick(token: str = "") -> dict:
 
 @app.post("/webhook")
 async def webhook(request: Request) -> dict:
+    # Nur Telegram kennt das beim setWebhook hinterlegte Secret - gefälschte
+    # POSTs von Dritten (erratene URL, gespoofte from.id) fallen hier durch.
+    expected_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+    if expected_secret and request.headers.get("X-Telegram-Bot-Api-Secret-Token") != expected_secret:
+        return {"ok": True}
+
     update = await request.json()
     message = update.get("message")
     if not message or "text" not in message:
@@ -88,14 +95,42 @@ async def webhook(request: Request) -> dict:
     if user_id != _allowed_user_id():
         return {"ok": True}
 
+    try:
+        return _handle_message(chat_id, user_id, text)
+    except Exception:
+        logging.exception("Fehler bei Verarbeitung der Nachricht: %r", text)
+        try:
+            telegram.send_message(
+                chat_id,
+                "⚠️ Da ist gerade etwas schiefgelaufen — der Eintrag wurde "
+                "möglicherweise nicht gespeichert. Probier es gleich nochmal.",
+            )
+        except Exception:
+            pass
+        return {"ok": True}
+
+
+def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
     if text == "/start":
         telegram.send_message(
             chat_id,
             "👋 Trainings-Tracker bereit. Schick mir z.B.\n"
             '"2 Sätze 8 Wiederholungen 80kg Bankdrücken"\n\n'
             f"Deine Telegram-User-ID: {user_id}\n"
-            "Befehle: /verlauf <übung>, /chart <übung>, /programm [datum]",
+            "Befehle: /verlauf <übung>, /chart <übung>, /programm [datum], /undo",
         )
+        return {"ok": True}
+
+    if text == "/undo":
+        deleted = db.delete_last_entry(user_id)
+        if deleted is None:
+            telegram.send_message(chat_id, "Nichts zum Löschen gefunden.")
+            return {"ok": True}
+        if deleted["type"] == "bodyweight":
+            desc = f"Körpergewicht {deleted.get('weight_kg', '-')}kg vom {deleted['logged_at'][:10]}"
+        else:
+            desc = f"{deleted.get('exercise', '?')} vom {deleted['logged_at'][:10]}"
+        telegram.send_message(chat_id, f"🗑️ Gelöscht: {desc}")
         return {"ok": True}
 
     if text.startswith("/programm"):
