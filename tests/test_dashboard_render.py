@@ -43,3 +43,23 @@ def test_alle_plan_uebungen_erscheinen_auch_ohne_daten():
     html = render_dashboard_html([], "token", None, training_days=0)
     for exercise in ["Kniebeuge", "Klimmzüge", "Pallof Press", "Farmer's Walk"]:
         assert exercise in html
+
+
+def test_wochen_stat_tile_zeigt_woche():
+    html = render_dashboard_html([], "token", None, training_days=0, week_number=5)
+    assert "5/12" in html
+
+
+def test_wochen_stat_tile_ohne_startdatum():
+    html = render_dashboard_html([], "token", None, training_days=0, week_number=None)
+    assert "Programmwoche" in html
+
+
+def test_deload_banner_erscheint_in_woche_7():
+    html = render_dashboard_html([], "token", None, training_days=0, week_number=7)
+    assert "Deload" in html
+
+
+def test_kein_deload_banner_in_woche_1():
+    html = render_dashboard_html([], "token", None, training_days=0, week_number=1)
+    assert "Deload" not in html

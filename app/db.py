@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, timedelta
 from functools import lru_cache
 
 from supabase import Client, create_client
@@ -121,16 +121,69 @@ def get_training_days_count(telegram_user_id: int) -> int:
     return len({row["logged_at"][:10] for row in response.data})
 
 
-def get_last_reminder_date() -> date | None:
+def get_workout_days_in_range(telegram_user_id: int, start: date, end: date) -> int:
     response = (
-        get_client().table(STATE_TABLE).select("value").eq("key", "last_reminder_date").execute()
+        get_client()
+        .table(TABLE)
+        .select("logged_at")
+        .eq("telegram_user_id", telegram_user_id)
+        .gte("logged_at", start.isoformat())
+        .lt("logged_at", (end + timedelta(days=1)).isoformat())
+        .execute()
     )
-    if not response.data:
+    return len({row["logged_at"][:10] for row in response.data})
+
+
+def get_weight_change_in_range(
+    telegram_user_id: int, start: date, end: date
+) -> tuple[float, float] | None:
+    """Erster vs. letzter Körpergewicht-Eintrag im Zeitraum, oder None bei <2 Einträgen."""
+    response = (
+        get_client()
+        .table(BODY_WEIGHT_TABLE)
+        .select("weight_kg, logged_at")
+        .eq("telegram_user_id", telegram_user_id)
+        .gte("logged_at", start.isoformat())
+        .lt("logged_at", (end + timedelta(days=1)).isoformat())
+        .order("logged_at")
+        .execute()
+    )
+    if len(response.data) < 2:
         return None
-    return date.fromisoformat(response.data[0]["value"])
+    return response.data[0]["weight_kg"], response.data[-1]["weight_kg"]
+
+
+def get_state(key: str) -> str | None:
+    response = get_client().table(STATE_TABLE).select("value").eq("key", key).execute()
+    return response.data[0]["value"] if response.data else None
+
+
+def set_state(key: str, value: str) -> None:
+    get_client().table(STATE_TABLE).upsert({"key": key, "value": value}).execute()
+
+
+def get_last_reminder_date() -> date | None:
+    value = get_state("last_reminder_date")
+    return date.fromisoformat(value) if value else None
 
 
 def set_last_reminder_date(d: date) -> None:
-    get_client().table(STATE_TABLE).upsert(
-        {"key": "last_reminder_date", "value": d.isoformat()}
-    ).execute()
+    set_state("last_reminder_date", d.isoformat())
+
+
+def get_last_weekly_summary_date() -> date | None:
+    value = get_state("last_weekly_summary_date")
+    return date.fromisoformat(value) if value else None
+
+
+def set_last_weekly_summary_date(d: date) -> None:
+    set_state("last_weekly_summary_date", d.isoformat())
+
+
+def get_program_start_date() -> date | None:
+    value = get_state("program_start_date")
+    return date.fromisoformat(value) if value else None
+
+
+def set_program_start_date(d: date) -> None:
+    set_state("program_start_date", d.isoformat())

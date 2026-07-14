@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request, Response
@@ -12,7 +12,13 @@ from app import db, telegram
 from app.chart import render_progress_chart
 from app.dashboard import render_dashboard_html
 from app.llm_parser import parse_message
-from app.reminders import reminder_text, should_send_reminder
+from app.reminders import (
+    reminder_text,
+    should_send_reminder,
+    should_send_weekly_summary,
+    week_number_for,
+    weekly_summary_text,
+)
 
 app = FastAPI()
 
@@ -38,17 +44,34 @@ def health() -> dict:
 @app.get("/cron/tick")
 def cron_tick(token: str = "") -> dict:
     """Von einem externen Ping-Dienst alle ~10 Minuten aufgerufen: hält Render wach
-    und verschickt bei Bedarf die morgendliche Trainings-Erinnerung."""
+    und verschickt bei Bedarf die morgendliche Trainings-Erinnerung sowie sonntags
+    den Wochenrückblick."""
     if token != os.environ.get("CRON_SECRET"):
         return {"ok": False}
 
     now = datetime.now(BERLIN)
+    user_id = _allowed_user_id()
+    result = {"ok": True, "reminder_sent": False, "weekly_summary_sent": False}
+
     last_sent = db.get_last_reminder_date()
     if should_send_reminder(now, last_sent):
-        telegram.send_message(_allowed_user_id(), reminder_text(now.date()))
+        start_date = db.get_program_start_date()
+        week_number = week_number_for(now.date(), start_date)
+        telegram.send_message(user_id, reminder_text(now.date(), week_number))
         db.set_last_reminder_date(now.date())
-        return {"ok": True, "reminder_sent": True}
-    return {"ok": True, "reminder_sent": False}
+        result["reminder_sent"] = True
+
+    last_weekly = db.get_last_weekly_summary_date()
+    if should_send_weekly_summary(now, last_weekly):
+        week_start = now.date() - timedelta(days=now.date().weekday())
+        week_end = week_start + timedelta(days=6)
+        training_days = db.get_workout_days_in_range(user_id, week_start, week_end)
+        weight_change = db.get_weight_change_in_range(user_id, week_start, week_end)
+        telegram.send_message(user_id, weekly_summary_text(training_days, weight_change))
+        db.set_last_weekly_summary_date(now.date())
+        result["weekly_summary_sent"] = True
+
+    return result
 
 
 @app.post("/webhook")
@@ -71,8 +94,32 @@ async def webhook(request: Request) -> dict:
             "👋 Trainings-Tracker bereit. Schick mir z.B.\n"
             '"2 Sätze 8 Wiederholungen 80kg Bankdrücken"\n\n'
             f"Deine Telegram-User-ID: {user_id}\n"
-            "Befehle: /verlauf <übung>, /chart <übung>",
+            "Befehle: /verlauf <übung>, /chart <übung>, /programm [datum]",
         )
+        return {"ok": True}
+
+    if text.startswith("/programm"):
+        arg = text.removeprefix("/programm").strip()
+        if arg:
+            try:
+                start_date = date.fromisoformat(arg)
+            except ValueError:
+                telegram.send_message(chat_id, "Format: /programm JJJJ-MM-TT, z.B. /programm 2026-07-14")
+                return {"ok": True}
+            db.set_program_start_date(start_date)
+            week_number = week_number_for(datetime.now(BERLIN).date(), start_date)
+            telegram.send_message(
+                chat_id, f"✅ Programmstart gesetzt: {start_date.isoformat()} (Woche {week_number}/12)"
+            )
+            return {"ok": True}
+
+        start_date = db.get_program_start_date()
+        if start_date is None:
+            telegram.send_message(chat_id, "Noch kein Startdatum gesetzt. Nutzung: /programm 2026-07-14")
+            return {"ok": True}
+        week_number = week_number_for(datetime.now(BERLIN).date(), start_date)
+        status = f"Woche {week_number}/12" if week_number and week_number <= 12 else "Programm abgeschlossen 🎉"
+        telegram.send_message(chat_id, f"Start: {start_date.isoformat()} — {status}")
         return {"ok": True}
 
     if text.startswith("/verlauf"):
@@ -96,11 +143,11 @@ async def webhook(request: Request) -> dict:
             return {"ok": True}
         lines = [f"Verlauf für {exercise}:"]
         for e in entries:
-            date = e["logged_at"][:10]
+            entry_date = e["logged_at"][:10]
             if e.get("distance_km") is not None or e.get("duration_min") is not None:
-                lines.append(f"{date}: {e.get('distance_km', '-')}km / {e.get('duration_min', '-')}min")
+                lines.append(f"{entry_date}: {e.get('distance_km', '-')}km / {e.get('duration_min', '-')}min")
             else:
-                lines.append(f"{date}: {e.get('sets', '-')}x{e.get('reps', '-')} @ {e.get('weight_kg', '-')}kg")
+                lines.append(f"{entry_date}: {e.get('sets', '-')}x{e.get('reps', '-')} @ {e.get('weight_kg', '-')}kg")
         telegram.send_message(chat_id, "\n".join(lines))
         return {"ok": True}
 
@@ -147,7 +194,9 @@ def dashboard(token: str = "") -> HTMLResponse:
     latest_weight_history = db.get_body_weight_history(user_id, limit=1)
     latest_weight = latest_weight_history[0] if latest_weight_history else None
     training_days = db.get_training_days_count(user_id)
-    html = render_dashboard_html(recent, token, latest_weight, training_days, summary)
+    start_date = db.get_program_start_date()
+    week_number = week_number_for(datetime.now(BERLIN).date(), start_date)
+    html = render_dashboard_html(recent, token, latest_weight, training_days, summary, week_number)
     return HTMLResponse(html)
 
 

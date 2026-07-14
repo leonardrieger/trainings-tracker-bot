@@ -9,6 +9,7 @@ from __future__ import annotations
 from urllib.parse import quote
 
 from app.exercises import CARDIO_EXERCISES, PLAN_SECTIONS, SESSION_ONLY_EXERCISES
+from app.reminders import PROGRAM_LENGTH_WEEKS, is_deload_week
 
 TARGET_WEIGHT_RANGE = "87–89 kg"
 
@@ -45,6 +46,10 @@ _STYLE = """
     color: var(--ink-primary);
   }
   .stat-tile .label { font-size: 0.8rem; color: var(--ink-muted); margin-top: 0.15rem; }
+  .banner {
+    border-left: 3px solid #fab219; background: var(--surface); border-radius: 8px;
+    padding: 0.8rem 1rem; margin-top: 1rem; font-size: 0.88rem; color: var(--ink-secondary);
+  }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
   .card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
@@ -128,6 +133,7 @@ def render_dashboard_html(
     latest_weight: dict | None,
     training_days: int,
     exercise_summary: dict[str, dict] | None = None,
+    week_number: int | None = None,
 ) -> str:
     encoded_token = quote(token)
     summary = exercise_summary or {}
@@ -135,14 +141,27 @@ def render_dashboard_html(
 
     weight_value = f"{latest_weight['weight_kg']:g} kg" if latest_weight else "–"
     last_activity = recent[0]["logged_at"][:10] if recent else "–"
+    if week_number is None:
+        week_value = "–"
+    elif week_number <= PROGRAM_LENGTH_WEEKS:
+        week_value = f"{week_number}/{PROGRAM_LENGTH_WEEKS}"
+    else:
+        week_value = "fertig 🎉"
 
     stat_tiles = "".join(
         [
+            _stat_tile(week_value, "Programmwoche"),
             _stat_tile(weight_value, "Aktuelles Gewicht"),
             _stat_tile(TARGET_WEIGHT_RANGE, "Ziel-Gewicht (Woche 12)"),
             _stat_tile(str(training_days), "Trainingstage geloggt"),
             _stat_tile(last_activity, "Letzte Aktivität"),
         ]
+    )
+
+    deload_banner = (
+        '<div class="banner">📉 Deload-Fenster (Woche 6–8): diese Woche ~60% Gewicht, halbe Sätze.</div>'
+        if is_deload_week(week_number)
+        else ""
     )
 
     if latest_weight:
@@ -184,6 +203,7 @@ def render_dashboard_html(
   <p class="sub">Fortschritt über die 12 Wochen</p>
 
   <div class="stat-row">{stat_tiles}</div>
+  {deload_banner}
 
   <h2>Körpergewicht</h2>
   <div class="grid">{weight_card}</div>

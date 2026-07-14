@@ -57,3 +57,32 @@ def test_verlauf_command():
         get_history.assert_called_once()
         send.assert_called_once()
         assert "Bankdrücken" in send.call_args[0][1]
+
+
+def test_programm_setzen():
+    with patch("app.main.db.set_program_start_date") as set_start, patch(
+        "app.main.week_number_for", return_value=1
+    ), patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_update("/programm 2026-07-14"))
+        assert r.status_code == 200
+        set_start.assert_called_once()
+        assert "Woche 1/12" in send.call_args[0][1]
+
+
+def test_programm_ungueltiges_datum():
+    with patch("app.main.db.set_program_start_date") as set_start, patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_update("/programm nicht-datum"))
+        assert r.status_code == 200
+        set_start.assert_not_called()
+        assert "Format" in send.call_args[0][1]
+
+
+def test_programm_status_ohne_argument():
+    with patch("app.main.db.get_program_start_date", return_value=None), patch(
+        "app.main.telegram.send_message"
+    ) as send:
+        r = client.post("/webhook", json=_update("/programm"))
+        assert r.status_code == 200
+        assert "Noch kein Startdatum" in send.call_args[0][1]
