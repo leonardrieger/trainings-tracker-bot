@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from app.exercises import CARDIO_EXERCISES, PLAN_SECTIONS, SESSION_ONLY_EXERCISES
+from app.exercises import PLAN_SECTIONS, SESSION_ONLY_EXERCISES
 from app.reminders import PROGRAM_LENGTH_WEEKS, is_deload_week
 
 TARGET_WEIGHT_RANGE = "87–89 kg"
@@ -31,11 +31,13 @@ _STYLE = """
     background: var(--page-plane); color: var(--ink-primary);
   }
   h1 { margin: 0 0 0.2rem 0; font-size: 1.6rem; }
-  .sub { color: var(--ink-secondary); margin: 0 0 1.75rem 0; }
+  .sub { color: var(--ink-secondary); margin: 0 0 0.5rem 0; }
+  .tip { color: var(--ink-muted); font-size: 0.82rem; margin: 0 0 1.75rem 0; }
   h2 {
     font-size: 1rem; color: var(--ink-secondary); text-transform: uppercase;
     letter-spacing: 0.04em; margin: 2.25rem 0 0.75rem 0; font-weight: 600;
   }
+  .untracked { color: var(--ink-muted); font-size: 0.85rem; margin: 0; }
   .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; }
   .stat-tile {
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
@@ -80,18 +82,8 @@ def _stat_tile(value: str, label: str) -> str:
     return f'<div class="stat-tile"><div class="value">{value}</div><div class="label">{label}</div></div>'
 
 
-def _empty_hint(exercise: str) -> str:
-    if exercise in SESSION_ONLY_EXERCISES:
-        return f'Noch keine Daten. Schreib z.B. "{exercise}" an den Bot.'
-    if exercise in CARDIO_EXERCISES:
-        return 'Noch keine Daten. Schreib z.B. "30 min 5 km Laufen" an den Bot.'
-    return f'Noch keine Daten. Schreib z.B. "3 Sätze 8 Wiederholungen 50kg {exercise}" an den Bot.'
-
-
 def _exercise_card(exercise: str, summary: dict, encoded_token: str) -> str:
-    info = summary.get(exercise)
-    if info is None:
-        return f'<div class="empty-card"><h3>{exercise}</h3>{_empty_hint(exercise)}</div>'
+    info = summary[exercise]
 
     if exercise in SESSION_ONLY_EXERCISES:
         last_date = info["last"][:10]
@@ -108,6 +100,19 @@ def _exercise_card(exercise: str, summary: dict, encoded_token: str) -> str:
         f'<img src="/dashboard/chart.png?exercise={encoded_exercise}&token={encoded_token}" alt="{exercise} Verlauf">'
         f"</div>"
     )
+
+
+def _section_html(title: str, section_exercises: list[str], summary: dict, encoded_token: str) -> str:
+    tracked = [ex for ex in section_exercises if ex in summary]
+    untracked = [ex for ex in section_exercises if ex not in summary]
+
+    parts = [f"<h2>{title}</h2>"]
+    if tracked:
+        cards = "".join(_exercise_card(ex, summary, encoded_token) for ex in tracked)
+        parts.append(f'<div class="grid">{cards}</div>')
+    if untracked:
+        parts.append(f'<p class="untracked">Noch nicht getrackt: {" · ".join(untracked)}</p>')
+    return "".join(parts)
 
 
 def _activity_row(entry: dict) -> str:
@@ -180,8 +185,7 @@ def render_dashboard_html(
     covered_exercises: set[str] = set()
     for title, section_exercises in PLAN_SECTIONS:
         covered_exercises.update(section_exercises)
-        cards = "".join(_exercise_card(ex, summary, encoded_token) for ex in section_exercises)
-        section_html.append(f"<h2>{title}</h2><div class=\"grid\">{cards}</div>")
+        section_html.append(_section_html(title, section_exercises, summary, encoded_token))
 
     sonstiges = sorted(exercises_with_data - covered_exercises)
     if sonstiges:
@@ -201,6 +205,7 @@ def render_dashboard_html(
 <body>
   <h1>Trainings-Tracker</h1>
   <p class="sub">Fortschritt über die 12 Wochen</p>
+  <p class="tip">Tipp: Einheiten einfach in freier Sprache an den Bot schreiben, z.B. "3 Sätze 8 Wiederholungen 100kg Kniebeuge" oder "30 min 5 km Laufen".</p>
 
   <div class="stat-row">{stat_tiles}</div>
   {deload_banner}

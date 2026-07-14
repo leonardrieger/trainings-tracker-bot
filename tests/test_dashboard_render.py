@@ -32,17 +32,24 @@ def test_session_only_aktivitaet_zeigt_absolviert_statt_none():
     assert "✓ absolviert" in html
 
 
-def test_empty_state_hint_fuer_cardio_ist_passend():
+def test_ungetrackte_uebungen_als_kompakte_zeile_statt_karten():
     html = render_dashboard_html([], "token", None, training_days=0)
-    assert '"30 min 5 km Laufen"' in html
-    assert '"Kickboxen"' in html
-    assert '"Sparring"' in html
+    assert "Noch nicht getrackt: Kniebeuge" in html
+    assert html.count('class="empty-card"') == 1  # nur die Körpergewicht-Karte
 
 
 def test_alle_plan_uebungen_erscheinen_auch_ohne_daten():
     html = render_dashboard_html([], "token", None, training_days=0)
     for exercise in ["Kniebeuge", "Klimmzüge", "Pallof Press", "Farmer's Walk"]:
         assert exercise in html
+
+
+def test_gemischte_sektion_zeigt_karte_und_kompakte_zeile():
+    summary = {"Kniebeuge": {"count": 2, "last": "2026-07-14T07:00:00"}}
+    html = render_dashboard_html([], "token", None, training_days=1, exercise_summary=summary)
+    assert 'exercise=Kniebeuge' in html
+    assert "Noch nicht getrackt:" in html
+    assert "Bankdrücken" in html.split("Noch nicht getrackt:")[1].split("</p>")[0]
 
 
 def test_wochen_stat_tile_zeigt_woche():
