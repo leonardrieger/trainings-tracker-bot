@@ -94,8 +94,43 @@ _STYLE = """
   th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
   th { color: var(--ink-muted); font-weight: 500; }
   td { color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
+  .log-bar {
+    display: flex; gap: 0.5rem; margin-bottom: 1rem;
+  }
+  .log-bar input[type="text"] {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.7rem 0.9rem; color: var(--ink-primary); font-size: 1rem;
+  }
+  .log-bar button {
+    background: var(--series-1); border: none; border-radius: 8px; color: #fff;
+    padding: 0 1.1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  }
+  .log-bar .undo-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--ink-secondary);
+    font-weight: 500;
+  }
+  .flash {
+    border-left: 3px solid var(--series-1); background: var(--surface); border-radius: 8px;
+    padding: 0.7rem 1rem; margin-bottom: 1rem; font-size: 0.88rem; color: var(--ink-secondary);
+  }
 </style>
 """
+
+
+def _log_bar_html(encoded_token: str) -> str:
+    return (
+        f'<form class="log-bar" method="post" action="/dashboard/log?token={encoded_token}">'
+        '<input type="text" name="text" placeholder=\'z.B. "3x8 100kg Kniebeuge"\' required>'
+        '<button type="submit">Eintragen</button>'
+        "</form>"
+        f'<form class="log-bar" method="post" action="/dashboard/undo?token={encoded_token}">'
+        '<button type="submit" class="undo-btn">↩︎ Letzten Eintrag rückgängig machen</button>'
+        "</form>"
+    )
+
+
+def _flash_html(flash: str | None) -> str:
+    return f'<div class="flash">{flash}</div>' if flash else ""
 
 
 def _stat_tile(value: str, label: str) -> str:
@@ -179,6 +214,7 @@ def render_dashboard_html(
     week_number: int | None = None,
     today: date | None = None,
     trained_dates: set[str] | None = None,
+    flash: str | None = None,
 ) -> str:
     encoded_token = quote(token)
     summary = exercise_summary or {}
@@ -241,15 +277,23 @@ def render_dashboard_html(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Trainings-Tracker</title>
+  <link rel="manifest" href="/manifest.webmanifest?token={encoded_token}">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0d0d0d">
   {_STYLE}
 </head>
 <body>
   <h1>Trainings-Tracker</h1>
   <p class="sub">Fortschritt über die 12 Wochen</p>
 
+  {_flash_html(flash)}
+  {_log_bar_html(encoded_token)}
+
   {week_calendar}
 
-  <p class="tip">Tipp: Einheiten einfach in freier Sprache an den Bot schreiben, z.B. "3 Sätze 8 Wiederholungen 100kg Kniebeuge" oder "30 min 5 km Laufen".</p>
+  <p class="tip">Tipp: Einheiten einfach in freier Sprache eintragen oder an den Bot schreiben, z.B. "3 Sätze 8 Wiederholungen 100kg Kniebeuge" oder "30 min 5 km Laufen".</p>
 
   <div class="stat-row">{stat_tiles}</div>
   {deload_banner}
@@ -264,5 +308,10 @@ def render_dashboard_html(
     <thead><tr><th>Datum</th><th>Übung</th><th>Details</th></tr></thead>
     <tbody>{rows}</tbody>
   </table>
+  <script>
+    if ('serviceWorker' in navigator) {{
+      navigator.serviceWorker.register('/sw.js');
+    }}
+  </script>
 </body>
 </html>"""

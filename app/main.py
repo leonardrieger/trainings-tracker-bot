@@ -1,15 +1,19 @@
 """FastAPI-App: Telegram-Webhook-Endpoint + Command-Routing."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import date, datetime, timedelta
+from pathlib import Path
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
-from app import db, telegram
+from app import chat, db, telegram
 from app.chart import render_progress_chart
 from app.dashboard import render_dashboard_html
 from app.llm_parser import parse_message
@@ -22,10 +26,17 @@ from app.reminders import (
 )
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 BODYWEIGHT_ALIASES = {"gewicht", "körpergewicht", "koerpergewicht"}
 BODYWEIGHT_TARGET_RANGE = (87.0, 89.0)
 BERLIN = ZoneInfo("Europe/Berlin")
+
+_SERVICE_WORKER_JS = """\
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', () => {});
+"""
 
 
 def _allowed_user_id() -> int:
@@ -110,6 +121,16 @@ async def webhook(request: Request) -> dict:
         return {"ok": True}
 
 
+def _undo_message(deleted: dict | None) -> str:
+    if deleted is None:
+        return "Nichts zum Löschen gefunden."
+    if deleted["type"] == "bodyweight":
+        desc = f"Körpergewicht {deleted.get('weight_kg', '-')}kg vom {deleted['logged_at'][:10]}"
+    else:
+        desc = f"{deleted.get('exercise', '?')} vom {deleted['logged_at'][:10]}"
+    return f"🗑️ Gelöscht: {desc}"
+
+
 def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
     if text == "/start":
         telegram.send_message(
@@ -123,14 +144,7 @@ def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
 
     if text == "/undo":
         deleted = db.delete_last_entry(user_id)
-        if deleted is None:
-            telegram.send_message(chat_id, "Nichts zum Löschen gefunden.")
-            return {"ok": True}
-        if deleted["type"] == "bodyweight":
-            desc = f"Körpergewicht {deleted.get('weight_kg', '-')}kg vom {deleted['logged_at'][:10]}"
-        else:
-            desc = f"{deleted.get('exercise', '?')} vom {deleted['logged_at'][:10]}"
-        telegram.send_message(chat_id, f"🗑️ Gelöscht: {desc}")
+        telegram.send_message(chat_id, _undo_message(deleted))
         return {"ok": True}
 
     if text.startswith("/programm"):
@@ -208,19 +222,24 @@ def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
         return {"ok": True}
 
     parsed = parse_message(text)
-    if parsed.record_type == "bodyweight":
-        if parsed.weight_kg is not None:
+    if parsed.recognized:
+        if parsed.record_type == "bodyweight":
             db.insert_body_weight(user_id, parsed.weight_kg, parsed.raw_text)
+        else:
+            db.insert_log(user_id, parsed)
         telegram.send_message(chat_id, parsed.confirmation_text())
         return {"ok": True}
 
-    db.insert_log(user_id, parsed)
-    telegram.send_message(chat_id, parsed.confirmation_text())
+    # Kein Log-Eintrag erkannt -> als freie Frage an den Chat weiterreichen,
+    # statt sie als Datenmüll ("Unbekannt") zu speichern.
+    today = datetime.now(BERLIN).date()
+    week_number = week_number_for(today, db.get_program_start_date())
+    telegram.send_message(chat_id, chat.answer_question(user_id, text, today, week_number))
     return {"ok": True}
 
 
 @app.get("/dashboard")
-def dashboard(token: str = "") -> HTMLResponse:
+def dashboard(token: str = "", msg: str = "") -> HTMLResponse:
     if not _dashboard_authorized(token):
         return HTMLResponse("Unauthorized", status_code=401)
     user_id = _allowed_user_id()
@@ -235,7 +254,8 @@ def dashboard(token: str = "") -> HTMLResponse:
     week_start = today - timedelta(days=today.weekday())
     trained_dates = db.get_workout_dates_in_range(user_id, week_start, week_start + timedelta(days=6))
     html = render_dashboard_html(
-        recent, token, latest_weight, training_days, summary, week_number, today, trained_dates
+        recent, token, latest_weight, training_days, summary, week_number, today, trained_dates,
+        flash=msg or None,
     )
     return HTMLResponse(html)
 
@@ -254,3 +274,54 @@ def dashboard_chart(exercise: str, token: str = "") -> Response:
     if image is None:
         return Response(status_code=404)
     return Response(content=image, media_type="image/png")
+
+
+@app.post("/dashboard/log")
+def dashboard_log(text: str = Form(...), token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    user_id = _allowed_user_id()
+    parsed = parse_message(text)
+    if parsed.recognized:
+        if parsed.record_type == "bodyweight":
+            db.insert_body_weight(user_id, parsed.weight_kg, parsed.raw_text)
+        else:
+            db.insert_log(user_id, parsed)
+        msg = parsed.confirmation_text()
+    else:
+        msg = f'⚠️ Nicht erkannt: "{text}". Versuch\'s z.B. mit "3x8 100kg Kniebeuge".'
+    return RedirectResponse(f"/dashboard?token={quote(token)}&msg={quote(msg)}", status_code=303)
+
+
+@app.post("/dashboard/undo")
+def dashboard_undo(token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    deleted = db.delete_last_entry(_allowed_user_id())
+    msg = _undo_message(deleted)
+    return RedirectResponse(f"/dashboard?token={quote(token)}&msg={quote(msg)}", status_code=303)
+
+
+@app.get("/sw.js")
+def service_worker() -> Response:
+    return Response(content=_SERVICE_WORKER_JS, media_type="application/javascript")
+
+
+@app.get("/manifest.webmanifest")
+def manifest(token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    data = {
+        "name": "Trainings-Tracker",
+        "short_name": "Training",
+        "start_url": f"/dashboard?token={quote(token)}",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#0d0d0d",
+        "theme_color": "#0d0d0d",
+        "icons": [
+            {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+        ],
+    }
+    return Response(content=json.dumps(data), media_type="application/manifest+json")

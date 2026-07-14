@@ -1,6 +1,6 @@
 # Trainings-Tracker Telegram-Bot — Projektzusammenfassung
 
-_Stand: 2026-07-14_
+_Stand: 2026-07-14 (PWA-Dashboard + Chat-Feature)_
 
 Persönlicher Fitness-Tracker: Trainingseinheiten werden per Telegram-Nachricht in
 freier Sprache geloggt (z.B. „2 Sätze 8 Wiederholungen 80kg Bankdrücken"), landen in
@@ -43,17 +43,19 @@ Telegram (Handy) --Webhook--> Render (FastAPI) --insert/query--> Supabase (Postg
 
 ```
 app/
-  main.py         FastAPI-App: Webhook, /cron/tick, /dashboard, Command-Routing
+  main.py         FastAPI-App: Webhook, /cron/tick, /dashboard (+/log, /undo), PWA-Routen, Command-Routing
   parser.py       Regex-Parsing von Nachrichten -> ParsedWorkout
   llm_parser.py   Groq-LLM-Parsing mit Regex-Fallback
+  chat.py         Freies Frage-Antwort-Chat via Groq (Kontext: Plan + letzte 50 Einträge)
   exercises.py    Übungsnamen + Aliase, PLAN_SECTIONS (Tag A/B/C…), SESSION_ONLY_EXERCISES
   db.py           Supabase-Wrapper (Insert/Query/State/Delete)
   telegram.py     sendMessage / sendPhoto
   chart.py        Matplotlib-Fortschritts-Charts (Dark-Palette)
   reminders.py    Reine Logik: Reminder, Wochenzähler, Klimmzug-Phasen, Deload, Wochenrückblick
-  dashboard.py    HTML-Dashboard (Stat-Tiles, Wochenkalender, gruppierte Sektionen)
+  dashboard.py    HTML-Dashboard (Stat-Tiles, Wochenkalender, Eingabe-Formular, PWA-Meta-Tags)
+  static/         PWA-Icons (icon-192.png, icon-512.png)
 sql/schema.sql    Tabellen: workout_logs, body_weight_logs, bot_state
-tests/            82 Tests (pytest)
+tests/            103 Tests (pytest)
 .github/workflows/test.yml   CI: pytest bei jedem Push/PR
 requirements.txt, runtime.txt, .env.example, README.md
 ```
@@ -74,7 +76,8 @@ requirements.txt, runtime.txt, .env.example, README.md
 
 | Befehl | Funktion |
 |---|---|
-| _freie Nachricht_ | Trainings-/Cardio-/Körpergewichts-Eintrag, z.B. „3x8 100kg Kniebeuge", „30 min 5 km Laufen", „Gewicht heute 84,2kg" |
+| _freie Nachricht (Log)_ | Trainings-/Cardio-/Körpergewichts-Eintrag, z.B. „3x8 100kg Kniebeuge", „30 min 5 km Laufen", „Gewicht heute 84,2kg" |
+| _freie Nachricht (Frage)_ | Wird nicht als Log erkannt -> geht als Chat-Frage an Groq, z.B. „Was steht heute an?", „Wie viele Trainingstage diese Woche?" (Kontext: Tagesplan + Wochenstand + letzte 50 Einträge) |
 | `/start` | Begrüßung + eigene Telegram-User-ID |
 | `/verlauf <übung>` | Letzte Einträge als Text (auch `/verlauf Gewicht`) |
 | `/chart <übung>` | Fortschritts-Diagramm als Bild (auch `/chart Gewicht`) |
@@ -85,6 +88,13 @@ requirements.txt, runtime.txt, .env.example, README.md
 
 ## Dashboard-Features
 
+- **Installierbar als PWA:** `/manifest.webmanifest` + `/sw.js` (No-Op-Service-Worker,
+  kein Offline-Caching) + `apple-touch-icon`/Meta-Tags für iOS. "Zum Startbildschirm
+  hinzufügen" macht daraus eine App-artige Kachel auf dem Handy.
+- **Eingabe-Formular** oben im Dashboard: gleiche Freitext-Pipeline wie Telegram
+  (`POST /dashboard/log`), plus „Rückgängig"-Button (`POST /dashboard/undo`,
+  PRG-Redirect mit Flash-Banner) — Einträge sind also nicht mehr nur per Telegram
+  möglich.
 - **Wochenkalender** (Mo–So) mit echten Wochentagen + Kurzplan, heutiger Tag
   hervorgehoben, bereits getrackte Tage mit ✓
 - **Stat-Tiles:** Programmwoche (X/12), aktuelles Gewicht, Zielgewicht (87–89 kg),
@@ -139,6 +149,15 @@ _Die echten Werte liegen in der lokalen `.env` (gitignored) und in den Render-En
   `/programm` mit `UnboundLocalError` abstürzen. Behoben.
 - **Sicherheit:** Webhook vertraute ursprünglich nur auf `from.id` im Body (fälschbar) →
   jetzt zusätzlich Telegram `secret_token`-Header-Prüfung.
+- **Nicht erkannter Text landete als Datenmüll:** vor dem Chat-Feature wurde jede
+  nicht erkannte Nachricht trotzdem als Workout-Log mit `exercise="Unbekannt"`
+  gespeichert. Behoben durch Routing über `ParsedWorkout.recognized` — unerkannter
+  Text geht jetzt an den Chat statt in die Datenbank.
+- **LLM verwechselte Tagesplan mit bereits Absolviertem:** der Chat-Kontext enthielt
+  ursprünglich nur „Heute: Kickboxen" ohne Kennzeichnung, ob das der *Plan* oder
+  *bereits Getrackte* ist — das Modell antwortete dadurch fälschlich, ein geplanter
+  Trainingstag sei schon erledigt. Behoben durch explizit getrennte, beschriftete
+  Abschnitte („TRAININGSPLAN FÜR HEUTE" vs. „BEREITS GETRACKTE EINTRÄGE") im Prompt.
 
 ---
 
@@ -157,7 +176,8 @@ _Die echten Werte liegen in der lokalen `.env` (gitignored) und in den Render-En
 ### Mögliche nächste Features (noch nicht umgesetzt)
 - **PR-/Rekord-Erkennung:** Bot meldet „🎉 Neuer Rekord!" bei neuem Bestgewicht pro Übung
 - **CSV-Export** vom Dashboard (Daten-Backup / eigene Auswertung)
-- **PWA:** Dashboard als installierbare Web-App für den Handy-Homescreen
+- **Multi-Turn-Chat-Gedächtnis:** aktuell ist jede Chat-Frage ein eigenständiger
+  Groq-Call ohne vorherige Konversation
 
 ---
 

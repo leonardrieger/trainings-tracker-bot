@@ -102,3 +102,27 @@ def test_wochenkalender_zeigt_haken_fuer_trainierte_tage():
 def test_ohne_today_kein_kalender():
     html = render_dashboard_html([], "token", None, training_days=0)
     assert 'class="day-tile' not in html
+
+
+def test_flash_wird_angezeigt():
+    html = render_dashboard_html([], "token", None, training_days=0, flash="✅ Kniebeuge gespeichert")
+    assert 'class="flash"' in html
+    assert "✅ Kniebeuge gespeichert" in html
+
+
+def test_ohne_flash_kein_flash_banner():
+    html = render_dashboard_html([], "token", None, training_days=0)
+    assert 'class="flash"' not in html
+
+
+def test_log_formular_und_undo_button_vorhanden():
+    html = render_dashboard_html([], "mein-token", None, training_days=0)
+    assert '<form class="log-bar" method="post" action="/dashboard/log?token=mein-token">' in html
+    assert '<form class="log-bar" method="post" action="/dashboard/undo?token=mein-token">' in html
+
+
+def test_pwa_meta_tags_vorhanden():
+    html = render_dashboard_html([], "mein-token", None, training_days=0)
+    assert 'rel="manifest" href="/manifest.webmanifest?token=mein-token"' in html
+    assert 'rel="apple-touch-icon"' in html
+    assert "serviceWorker" in html
