@@ -134,11 +134,37 @@ def test_log_formular_und_undo_button_vorhanden():
     assert 'action="/dashboard/undo?token=mein-token"' in html
 
 
-def test_drei_tabs_und_ansichten_vorhanden():
+def test_vier_tabs_und_ansichten_vorhanden():
     html = render_dashboard_html([], "token", None, training_days=0)
-    for view_id in ["view-heute", "view-fortschritt", "view-verlauf"]:
+    for view_id in ["view-heute", "view-fortschritt", "view-verlauf", "view-plan"]:
         assert view_id in html
-    assert html.count('class="tab"') + html.count('class="tab active"') == 3
+    assert html.count('class="tab"') + html.count('class="tab active"') == 4
+
+
+def test_plan_tab_zeigt_alle_wochentage_und_werte():
+    plan_long = {d: f"Langform {d}" for d in range(7)}
+    plan_short = {d: f"Kurz{d}" for d in range(7)}
+    html = render_dashboard_html(
+        [], "token", None, training_days=0, plan_long=plan_long, plan_short=plan_short
+    )
+    for d in range(7):
+        assert f'name="long_{d}" value="Langform {d}"' in html
+        assert f'name="short_{d}" value="Kurz{d}"' in html
+    assert 'action="/dashboard/plan?token=token"' in html
+    assert 'action="/dashboard/plan/reset?token=token"' in html
+
+
+def test_view_param_steuert_aktiven_tab():
+    html = render_dashboard_html([], "token", None, training_days=0, view="plan")
+    assert '<section class="view" id="view-plan">' in html
+    assert '<section class="view" id="view-heute" hidden>' in html
+    assert 'class="tab active" data-view="plan"' in html
+
+
+def test_unbekannter_view_param_faellt_auf_heute_zurueck():
+    html = render_dashboard_html([], "token", None, training_days=0, view="nonsense")
+    assert '<section class="view" id="view-heute">' in html
+    assert '<section class="view" id="view-plan" hidden>' in html
 
 
 def test_verlauf_zeigt_aktivitaeten_als_liste():

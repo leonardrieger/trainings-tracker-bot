@@ -1,17 +1,20 @@
 """Supabase-Client-Wrapper für Insert/Query von Trainings-Logs."""
 from __future__ import annotations
 
+import json
 import os
 from datetime import date, timedelta
 from functools import lru_cache
 
 from supabase import Client, create_client
 
+from app.config import TRAINING_PLAN, TRAINING_PLAN_SHORT
 from app.parser import ParsedWorkout
 
 TABLE = "workout_logs"
 BODY_WEIGHT_TABLE = "body_weight_logs"
 STATE_TABLE = "bot_state"
+TRAINING_PLAN_STATE_KEY = "training_plan"
 
 
 @lru_cache
@@ -193,6 +196,10 @@ def set_state(key: str, value: str) -> None:
     get_client().table(STATE_TABLE).upsert({"key": key, "value": value}).execute()
 
 
+def delete_state(key: str) -> None:
+    get_client().table(STATE_TABLE).delete().eq("key", key).execute()
+
+
 def get_last_reminder_date() -> date | None:
     value = get_state("last_reminder_date")
     return date.fromisoformat(value) if value else None
@@ -218,3 +225,47 @@ def get_program_start_date() -> date | None:
 
 def set_program_start_date(d: date) -> None:
     set_state("program_start_date", d.isoformat())
+
+
+def _merge_training_plan(raw: str | None) -> tuple[dict[int, str], dict[int, str]]:
+    """Reine Merge-Logik (kein DB-Zugriff): Override aus der DB pro Wochentag über die
+    config.py-Defaults gelegt. Fehlt/kaputt/falscher Typ -> kompletter Fallback auf die
+    Defaults; ein einzelner Tag ohne gültige Langform fällt nur für diesen Tag zurück."""
+    long_plan, short_plan = dict(TRAINING_PLAN), dict(TRAINING_PLAN_SHORT)
+    if not raw:
+        return long_plan, short_plan
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return long_plan, short_plan
+    if not isinstance(data, dict):
+        return long_plan, short_plan
+
+    for day in range(7):
+        entry = data.get(str(day))
+        if not isinstance(entry, dict):
+            continue
+        long_text = entry.get("long")
+        if not isinstance(long_text, str) or not long_text.strip():
+            continue
+        long_plan[day] = long_text.strip()
+        short_text = entry.get("short")
+        short_plan[day] = (
+            short_text.strip() if isinstance(short_text, str) and short_text.strip() else long_plan[day]
+        )
+    return long_plan, short_plan
+
+
+def get_training_plan() -> tuple[dict[int, str], dict[int, str]]:
+    """Aktueller Wochenplan (Lang-/Kurzform): DB-Override falls vorhanden, sonst
+    config.py-Default. Kein Schema-Change nötig - liegt als JSON in bot_state."""
+    return _merge_training_plan(get_state(TRAINING_PLAN_STATE_KEY))
+
+
+def set_training_plan(long_plan: dict[int, str], short_plan: dict[int, str]) -> None:
+    payload = {str(day): {"long": long_plan[day], "short": short_plan[day]} for day in range(7)}
+    set_state(TRAINING_PLAN_STATE_KEY, json.dumps(payload))
+
+
+def reset_training_plan() -> None:
+    delete_state(TRAINING_PLAN_STATE_KEY)

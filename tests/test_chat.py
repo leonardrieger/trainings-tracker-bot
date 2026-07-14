@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import chat
+from app.config import TRAINING_PLAN, TRAINING_PLAN_SHORT
 
 
 def _fake_groq_response(content: str) -> MagicMock:
@@ -56,7 +57,9 @@ def test_build_context_enthaelt_plan_und_verlauf(monkeypatch):
             "logged_at": "2026-07-14T10:00:00",
         }
     ]
-    with patch("app.chat.db.get_recent_activity", return_value=entries) as get_recent:
+    with patch("app.chat.db.get_recent_activity", return_value=entries) as get_recent, patch(
+        "app.chat.db.get_training_plan", return_value=(TRAINING_PLAN, TRAINING_PLAN_SHORT)
+    ):
         context = chat.build_context(42, date(2026, 7, 15), week_number=3)
     get_recent.assert_called_once_with(42, limit=50)
     assert "Gym – Tag B" in context  # Mittwoch 2026-07-15 ist Tag B
@@ -66,7 +69,9 @@ def test_build_context_enthaelt_plan_und_verlauf(monkeypatch):
 
 
 def test_build_context_ohne_eintraege():
-    with patch("app.chat.db.get_recent_activity", return_value=[]):
+    with patch("app.chat.db.get_recent_activity", return_value=[]), patch(
+        "app.chat.db.get_training_plan", return_value=(TRAINING_PLAN, TRAINING_PLAN_SHORT)
+    ):
         context = chat.build_context(42, date(2026, 7, 14), week_number=None)
     assert "Noch keine Einträge." in context
 

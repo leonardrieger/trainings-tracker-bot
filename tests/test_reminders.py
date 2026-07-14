@@ -49,6 +49,14 @@ def test_reminder_text_enthaelt_montags_plan():
     assert "Heute:" in text
 
 
+def test_reminder_text_mit_explizitem_plan_override():
+    montag = date(2026, 7, 20)
+    custom_plan = {0: "Individueller Montags-Plan", 1: "x", 2: "x", 3: "x", 4: "x", 5: "x", 6: "x"}
+    text = reminder_text(montag, plan=custom_plan)
+    assert "Individueller Montags-Plan" in text
+    assert TRAINING_PLAN[0] not in text
+
+
 def test_week_number_vor_start_ist_none():
     assert week_number_for(date(2026, 7, 10), date(2026, 7, 14)) is None
 

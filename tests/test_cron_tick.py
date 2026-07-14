@@ -11,6 +11,7 @@ os.environ.setdefault("ALLOWED_TELEGRAM_USER_ID", "42")
 
 from fastapi.testclient import TestClient
 
+from app.config import TRAINING_PLAN, TRAINING_PLAN_SHORT
 from app.main import app
 
 client = TestClient(app)
@@ -54,6 +55,8 @@ def test_cron_tick_reminder_fenster_mocked(monkeypatch):
         "app.main.db.get_last_reminder_date", return_value=None
     ), patch("app.main.db.get_last_weekly_summary_date", return_value=date(2020, 1, 1)), patch(
         "app.main.db.get_program_start_date", return_value=None
+    ), patch(
+        "app.main.db.get_training_plan", return_value=(TRAINING_PLAN, TRAINING_PLAN_SHORT)
     ), patch("app.main.db.set_last_reminder_date") as set_reminder, patch(
         "app.main.telegram.send_message"
     ) as send:

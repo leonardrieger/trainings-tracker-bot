@@ -9,6 +9,7 @@ os.environ.setdefault("ALLOWED_TELEGRAM_USER_ID", "42")
 
 from fastapi.testclient import TestClient
 
+from app.config import TRAINING_PLAN, TRAINING_PLAN_SHORT
 from app.main import app
 
 client = TestClient(app)
@@ -34,6 +35,8 @@ def test_dashboard_mit_richtigem_token_200(monkeypatch):
         "app.main.db.get_training_days_count", return_value=3
     ), patch("app.main.db.get_program_start_date", return_value=None), patch(
         "app.main.db.get_workout_dates_in_range", return_value=set()
+    ), patch(
+        "app.main.db.get_training_plan", return_value=(TRAINING_PLAN, TRAINING_PLAN_SHORT)
     ):
         r = client.get("/dashboard?token=richtig")
     assert r.status_code == 200
@@ -98,6 +101,74 @@ def test_dashboard_undo_mit_token(monkeypatch):
     assert r.status_code == 303
     delete.assert_called_once()
     assert "Gel%C3%B6scht" in r.headers["location"] or "Gelöscht" in r.headers["location"]
+
+
+def _plan_form_data(**overrides) -> dict:
+    data = {}
+    for d in range(7):
+        data[f"long_{d}"] = f"Langform {d}"
+        data[f"short_{d}"] = f"Kurz{d}"
+    data.update(overrides)
+    return data
+
+
+def test_dashboard_plan_ohne_token_401():
+    r = client.post("/dashboard/plan", data=_plan_form_data())
+    assert r.status_code == 401
+
+
+def test_dashboard_plan_speichert_gueltigen_plan(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.set_training_plan") as set_plan:
+        r = client.post(
+            "/dashboard/plan?token=richtig", data=_plan_form_data(), follow_redirects=False
+        )
+    assert r.status_code == 303
+    set_plan.assert_called_once()
+    long_plan, short_plan = set_plan.call_args.args
+    assert long_plan[0] == "Langform 0"
+    assert short_plan[3] == "Kurz3"
+    assert "view=plan" in r.headers["location"]
+    assert "gespeichert" in r.headers["location"]
+
+
+def test_dashboard_plan_leerer_langform_text_wird_abgelehnt(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.set_training_plan") as set_plan:
+        r = client.post(
+            "/dashboard/plan?token=richtig",
+            data=_plan_form_data(long_3="   "),
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    set_plan.assert_not_called()
+    assert "view=plan" in r.headers["location"]
+
+
+def test_dashboard_plan_leere_kurzform_faellt_auf_langform_zurueck(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.set_training_plan") as set_plan:
+        client.post(
+            "/dashboard/plan?token=richtig",
+            data=_plan_form_data(short_5=""),
+            follow_redirects=False,
+        )
+    _, short_plan = set_plan.call_args.args
+    assert short_plan[5] == "Langform 5"
+
+
+def test_dashboard_plan_reset_ohne_token_401():
+    r = client.post("/dashboard/plan/reset")
+    assert r.status_code == 401
+
+
+def test_dashboard_plan_reset_setzt_zurueck(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.reset_training_plan") as reset_plan:
+        r = client.post("/dashboard/plan/reset?token=richtig", follow_redirects=False)
+    assert r.status_code == 303
+    reset_plan.assert_called_once()
+    assert "view=plan" in r.headers["location"]
 
 
 def test_manifest_ohne_token_401():

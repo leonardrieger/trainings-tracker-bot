@@ -47,9 +47,10 @@ def is_deload_week(week_number: int | None) -> bool:
     return week_number is not None and DELOAD_START_WEEK <= week_number <= DELOAD_END_WEEK
 
 
-def reminder_text(day: date, week_number: int | None = None) -> str:
-    plan = TRAINING_PLAN[day.weekday()]
-    header = f"🏋️ Heute: {plan}"
+def reminder_text(day: date, week_number: int | None = None, plan: dict[int, str] | None = None) -> str:
+    plan = plan if plan is not None else TRAINING_PLAN
+    today_plan = plan[day.weekday()]
+    header = f"🏋️ Heute: {today_plan}"
     if week_number is not None and week_number <= PROGRAM_LENGTH_WEEKS:
         header += f" (Woche {week_number}/{PROGRAM_LENGTH_WEEKS})"
 

@@ -62,7 +62,8 @@ def _format_entry(entry: dict) -> str:
 
 
 def build_context(user_id: int, today: date, week_number: int | None) -> str:
-    plan = reminder_text(today, week_number)
+    plan_long, _ = db.get_training_plan()
+    plan = reminder_text(today, week_number, plan_long)
     entries = db.get_recent_activity(user_id, limit=50)
     history = "\n".join(_format_entry(e) for e in entries) if entries else "Noch keine Einträge."
     return (

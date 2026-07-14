@@ -70,7 +70,8 @@ def cron_tick(token: str = "") -> dict:
     if should_send_reminder(now, last_sent):
         start_date = db.get_program_start_date()
         week_number = week_number_for(now.date(), start_date)
-        telegram.send_message(user_id, reminder_text(now.date(), week_number))
+        plan_long, _ = db.get_training_plan()
+        telegram.send_message(user_id, reminder_text(now.date(), week_number, plan_long))
         db.set_last_reminder_date(now.date())
         result["reminder_sent"] = True
 
@@ -240,7 +241,7 @@ def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
 
 
 @app.get("/dashboard")
-def dashboard(token: str = "", msg: str = "") -> HTMLResponse:
+def dashboard(token: str = "", msg: str = "", view: str = "heute") -> HTMLResponse:
     if not _dashboard_authorized(token):
         return HTMLResponse("Unauthorized", status_code=401)
     user_id = _allowed_user_id()
@@ -254,9 +255,10 @@ def dashboard(token: str = "", msg: str = "") -> HTMLResponse:
     week_number = week_number_for(today, start_date)
     week_start = today - timedelta(days=today.weekday())
     trained_dates = db.get_workout_dates_in_range(user_id, week_start, week_start + timedelta(days=6))
+    plan_long, plan_short = db.get_training_plan()
     html = render_dashboard_html(
         recent, token, latest_weight, training_days, summary, week_number, today, trained_dates,
-        flash=msg or None,
+        flash=msg or None, plan_long=plan_long, plan_short=plan_short, view=view,
     )
     return HTMLResponse(html)
 
@@ -301,6 +303,41 @@ def dashboard_undo(token: str = "") -> Response:
     deleted = db.delete_last_entry(_allowed_user_id())
     msg = _undo_message(deleted)
     return RedirectResponse(f"/dashboard?token={quote(token)}&msg={quote(msg)}", status_code=303)
+
+
+@app.post("/dashboard/plan")
+async def dashboard_plan_save(request: Request, token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    form = await request.form()
+
+    long_plan: dict[int, str] = {}
+    for day in range(7):
+        value = str(form.get(f"long_{day}", "")).strip()
+        if not value:
+            msg = "⚠️ Alle Wochentage brauchen einen Langform-Text."
+            return RedirectResponse(
+                f"/dashboard?token={quote(token)}&msg={quote(msg)}&view=plan", status_code=303
+            )
+        long_plan[day] = value
+
+    short_plan: dict[int, str] = {}
+    for day in range(7):
+        value = str(form.get(f"short_{day}", "")).strip()
+        short_plan[day] = value or long_plan[day]
+
+    db.set_training_plan(long_plan, short_plan)
+    msg = "✅ Wochenplan gespeichert."
+    return RedirectResponse(f"/dashboard?token={quote(token)}&msg={quote(msg)}&view=plan", status_code=303)
+
+
+@app.post("/dashboard/plan/reset")
+def dashboard_plan_reset(token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    db.reset_training_plan()
+    msg = "↺ Wochenplan auf Standard zurückgesetzt."
+    return RedirectResponse(f"/dashboard?token={quote(token)}&msg={quote(msg)}&view=plan", status_code=303)
 
 
 @app.get("/sw.js")

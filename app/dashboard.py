@@ -1,6 +1,6 @@
 """Baut die App-artige Übersichtsseite (keine Template-Engine, nur f-Strings).
 
-Drei Ansichten (Heute / Fortschritt / Verlauf), unten per Tab-Leiste gewechselt.
+Vier Ansichten (Heute / Fortschritt / Verlauf / Plan), unten per Tab-Leiste gewechselt.
 Ruhiger, minimalistischer Dark-Look: ein warmer Amber-Akzent sehr sparsam, dünne
 große Zahlen mit tabular-nums, Haarlinien statt schwerer Karten.
 """
@@ -133,12 +133,27 @@ _STYLE = """
   .activity .a-name { font-size: .95rem; color: var(--ink); }
   .activity .a-detail { font-size: .85rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 
+  .plan-row { margin: 0 0 1.3rem; }
+  .plan-day { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-mute); margin-bottom: .5rem; }
+  .plan-row input {
+    display: block; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: .7rem .85rem; color: var(--ink); font-size: .9rem; font-family: inherit; margin-bottom: .4rem;
+  }
+  .plan-row input:last-child { margin-bottom: 0; font-size: .8rem; color: var(--ink-dim); }
+  .plan-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  .plan-save {
+    width: 100%; margin-top: .5rem; border: none; background: var(--ink); color: var(--ground);
+    border-radius: var(--radius); padding: .85rem; font-size: .95rem; font-family: inherit; cursor: pointer;
+  }
+  .plan-save:active { transform: scale(.99); }
+  .plan-reset { margin-top: 1rem; text-align: center; }
+
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px); background: rgba(14,15,17,.82); backdrop-filter: blur(14px);
     border-top: 1px solid var(--line); z-index: 10;
   }
-  .tabbar-inner { max-width: 460px; margin: 0 auto; height: var(--nav-h); display: grid; grid-template-columns: repeat(3, 1fr); }
+  .tabbar-inner { max-width: 460px; margin: 0 auto; height: var(--nav-h); display: grid; grid-template-columns: repeat(4, 1fr); }
   .tab { background: none; border: none; cursor: pointer; color: var(--ink-mute); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .25rem; font-family: inherit; font-size: .68rem; }
   .tab svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.6; }
   .tab.active { color: var(--accent); }
@@ -155,6 +170,11 @@ _STYLE = """
 def _t(value) -> str:
     """Escapt Textinhalt (nicht Attribute) — Apostrophe bleiben lesbar (z.B. Farmer's Walk)."""
     return html.escape(str(value), quote=False)
+
+
+def _attr(value) -> str:
+    """Escapt für Attributwerte in doppelten Anführungszeichen (z.B. input value=)."""
+    return html.escape(str(value), quote=True)
 
 
 def _num(value) -> str:
@@ -227,8 +247,12 @@ def _heute_view(
     trained_dates: set[str],
     recent: list[dict],
     flash: str | None,
+    plan_long: dict[int, str],
+    plan_short: dict[int, str],
+    active: bool,
 ) -> str:
-    parts = ['<section class="view" id="view-heute">']
+    hidden_attr = "" if active else " hidden"
+    parts = [f'<section class="view" id="view-heute"{hidden_attr}>']
 
     if today is not None:
         eyebrow = f"{WEEKDAY_FULL[today.weekday()]} · {today.day}. {MONTH_FULL[today.month - 1]}"
@@ -236,7 +260,7 @@ def _heute_view(
         parts.append(
             f'<div class="today-head"><div class="eyebrow">{eyebrow}</div>{pill}</div>'
         )
-        title, sub = _hero_parts(TRAINING_PLAN[today.weekday()])
+        title, sub = _hero_parts(plan_long[today.weekday()])
         parts.append(f'<h1 class="hero">{_t(title)}</h1>')
         if sub:
             parts.append(f'<p class="hero-sub">{_t(sub)}</p>')
@@ -271,7 +295,7 @@ def _heute_view(
             )
             cells.append(
                 f'<div class="{cls}"><div class="d-abbr">{WEEKDAY_ABBR[wd]}</div>'
-                f'<div class="d-plan">{_t(TRAINING_PLAN_SHORT[wd])}</div>{mark}</div>'
+                f'<div class="d-plan">{_t(plan_short[wd])}</div>{mark}</div>'
             )
         parts.append(f'<div class="week-strip">{"".join(cells)}</div>')
 
@@ -307,10 +331,12 @@ def _fortschritt_view(
     training_days: int,
     week_value: str,
     summary: dict,
+    active: bool,
 ) -> str:
     weight_val = _num(latest_weight["weight_kg"]) if latest_weight else "–"
+    hidden_attr = "" if active else " hidden"
     parts = [
-        '<section class="view" id="view-fortschritt" hidden>',
+        f'<section class="view" id="view-fortschritt"{hidden_attr}>',
         '<div class="view-head"><span class="micro-label">Überblick</span></div>',
         '<div class="figures">',
         _figure(weight_val, "kg" if latest_weight else "", "Gewicht"),
@@ -370,7 +396,7 @@ def _section(title: str, exercises: list[str], summary: dict, encoded_token: str
 
 # ------------------------------------------------------------- Verlauf-View
 
-def _verlauf_view(recent: list[dict]) -> str:
+def _verlauf_view(recent: list[dict], active: bool) -> str:
     items = []
     for e in recent:
         detail, done = _entry_detail(e)
@@ -381,30 +407,64 @@ def _verlauf_view(recent: list[dict]) -> str:
             f'<span class="{cls}">{_t(detail)}</span></li>'
         )
     body = "".join(items) if items else '<p class="empty-line">Noch keine Einträge.</p>'
+    hidden_attr = "" if active else " hidden"
     return (
-        '<section class="view" id="view-verlauf" hidden>'
+        f'<section class="view" id="view-verlauf"{hidden_attr}>'
         '<div class="view-head"><span class="micro-label">Letzte Aktivitäten</span></div>'
         f'<ul class="activity">{body}</ul></section>'
     )
 
 
-_TABBAR = """
-<nav class="tabbar"><div class="tabbar-inner">
-  <button class="tab active" data-view="heute">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>Heute
-  </button>
-  <button class="tab" data-view="fortschritt">
-    <svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l3.5-4 3 2.5L20 8"/></svg>Fortschritt
-  </button>
-  <button class="tab" data-view="verlauf">
-    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Verlauf
-  </button>
-</div></nav>
-"""
+# ---------------------------------------------------------------- Plan-View
+
+def _plan_view(encoded_token: str, plan_long: dict[int, str], plan_short: dict[int, str], active: bool) -> str:
+    rows = []
+    for wd in range(7):
+        rows.append(
+            f'<div class="plan-row"><span class="plan-day">{WEEKDAY_FULL[wd]}</span>'
+            f'<input type="text" name="long_{wd}" value="{_attr(plan_long[wd])}" '
+            f'aria-label="{WEEKDAY_FULL[wd]} Langform" required>'
+            f'<input type="text" name="short_{wd}" value="{_attr(plan_short[wd])}" '
+            f'aria-label="{WEEKDAY_FULL[wd]} Kurzform" placeholder="Kurzform für Wochenstreifen">'
+            "</div>"
+        )
+    hidden_attr = "" if active else " hidden"
+    return (
+        f'<section class="view" id="view-plan"{hidden_attr}>'
+        '<div class="view-head"><span class="micro-label">Wochenplan bearbeiten</span></div>'
+        f'<form method="post" action="/dashboard/plan?token={encoded_token}">'
+        f'{"".join(rows)}'
+        '<button type="submit" class="plan-save">Speichern</button>'
+        "</form>"
+        f'<div class="plan-reset"><form method="post" action="/dashboard/plan/reset?token={encoded_token}" class="undo-form">'
+        '<button type="submit" class="undo">↺ Auf Standard zurücksetzen</button>'
+        "</form></div>"
+        "</section>"
+    )
+
+
+_TABS = [
+    (
+        "heute", "Heute",
+        '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
+    ),
+    ("fortschritt", "Fortschritt", '<path d="M4 19V5M4 19h16M8 15l3.5-4 3 2.5L20 8"/>'),
+    ("verlauf", "Verlauf", '<path d="M4 6h16M4 12h16M4 18h10"/>'),
+    ("plan", "Plan", '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+]
+
+
+def _tabbar(view: str) -> str:
+    buttons = []
+    for key, label, icon in _TABS:
+        cls = "tab active" if key == view else "tab"
+        buttons.append(f'<button class="{cls}" data-view="{key}"><svg viewBox="0 0 24 24">{icon}</svg>{label}</button>')
+    return f'<nav class="tabbar"><div class="tabbar-inner">{"".join(buttons)}</div></nav>'
+
 
 _SCRIPT = """
 <script>
-  var views = { heute: "view-heute", fortschritt: "view-fortschritt", verlauf: "view-verlauf" };
+  var views = { heute: "view-heute", fortschritt: "view-fortschritt", verlauf: "view-verlauf", plan: "view-plan" };
   document.querySelectorAll(".tab").forEach(function (t) {
     t.addEventListener("click", function () {
       var v = t.dataset.view;
@@ -418,6 +478,9 @@ _SCRIPT = """
 """
 
 
+_VIEWS = {"heute", "fortschritt", "verlauf", "plan"}
+
+
 def render_dashboard_html(
     recent: list[dict],
     token: str,
@@ -428,9 +491,15 @@ def render_dashboard_html(
     today: date | None = None,
     trained_dates: set[str] | None = None,
     flash: str | None = None,
+    plan_long: dict[int, str] | None = None,
+    plan_short: dict[int, str] | None = None,
+    view: str = "heute",
 ) -> str:
     encoded_token = quote(token)
     summary = exercise_summary or {}
+    plan_long = plan_long if plan_long is not None else TRAINING_PLAN
+    plan_short = plan_short if plan_short is not None else TRAINING_PLAN_SHORT
+    view = view if view in _VIEWS else "heute"
 
     if week_number is None:
         week_value = "–"
@@ -440,10 +509,14 @@ def render_dashboard_html(
         week_value = "fertig"
 
     heute = _heute_view(
-        encoded_token, today, week_value, week_number, trained_dates or set(), recent, flash
+        encoded_token, today, week_value, week_number, trained_dates or set(), recent, flash,
+        plan_long, plan_short, view == "heute",
     )
-    fortschritt = _fortschritt_view(encoded_token, latest_weight, training_days, week_value, summary)
-    verlauf = _verlauf_view(recent)
+    fortschritt = _fortschritt_view(
+        encoded_token, latest_weight, training_days, week_value, summary, view == "fortschritt"
+    )
+    verlauf = _verlauf_view(recent, view == "verlauf")
+    plan = _plan_view(encoded_token, plan_long, plan_short, view == "plan")
 
     return f"""<!doctype html>
 <html lang="de">
@@ -463,7 +536,8 @@ def render_dashboard_html(
     {heute}
     {fortschritt}
     {verlauf}
-    {_TABBAR}
+    {plan}
+    {_tabbar(view)}
   </div>
   {_SCRIPT}
 </body>
