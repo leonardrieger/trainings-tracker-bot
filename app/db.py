@@ -50,15 +50,22 @@ def get_history(telegram_user_id: int, exercise: str, limit: int = 10) -> list[d
     return response.data
 
 
-def list_exercises(telegram_user_id: int) -> list[str]:
+def get_exercise_summary(telegram_user_id: int) -> dict[str, dict]:
+    """Pro Übung: Anzahl Einträge + Datum des letzten Eintrags."""
     response = (
         get_client()
         .table(TABLE)
-        .select("exercise")
+        .select("exercise, logged_at")
         .eq("telegram_user_id", telegram_user_id)
         .execute()
     )
-    return sorted({row["exercise"] for row in response.data})
+    summary: dict[str, dict] = {}
+    for row in response.data:
+        entry = summary.setdefault(row["exercise"], {"count": 0, "last": row["logged_at"]})
+        entry["count"] += 1
+        if row["logged_at"] > entry["last"]:
+            entry["last"] = row["logged_at"]
+    return summary
 
 
 def get_recent_activity(telegram_user_id: int, limit: int = 20) -> list[dict]:
@@ -101,6 +108,17 @@ def get_body_weight_history(telegram_user_id: int, limit: int = 10) -> list[dict
         .execute()
     )
     return response.data
+
+
+def get_training_days_count(telegram_user_id: int) -> int:
+    response = (
+        get_client()
+        .table(TABLE)
+        .select("logged_at")
+        .eq("telegram_user_id", telegram_user_id)
+        .execute()
+    )
+    return len({row["logged_at"][:10] for row in response.data})
 
 
 def get_last_reminder_date() -> date | None:

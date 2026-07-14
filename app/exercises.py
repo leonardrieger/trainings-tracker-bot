@@ -21,8 +21,6 @@ EXERCISE_ALIASES: dict[str, list[str]] = {
         "schulterdrücken",
         "schulterdruecken",
         "shoulder press",
-        "overhead press",
-        "ohp",
     ],
     "Wadenheben": ["wadenheben", "calf raise", "calf raises"],
     "Hanging Leg Raises": ["hanging leg raise", "leg raise", "leg raises"],
@@ -41,7 +39,7 @@ EXERCISE_ALIASES: dict[str, list[str]] = {
     "Nacken-Curls": ["nacken-curls", "nacken curls", "neck curls", "nackencurls"],
     "Farmer's Walk": ["farmer's walk", "farmers walk", "farmer walk"],
     "Dips": ["dips", "dip"],
-    "Overhead Press": ["overhead press"],
+    "Overhead Press": ["overhead press", "ohp"],
     "Pallof Press": ["pallof press", "pallof"],
     "Seitheben": ["seitheben", "lateral raise", "lateral raises"],
     "Sparring": ["sparring"],
@@ -50,6 +48,52 @@ EXERCISE_ALIASES: dict[str, list[str]] = {
 }
 
 CARDIO_EXERCISES = {"Laufen", "Sparring", "Kickboxen"}
+
+# Cardio-Übungen ohne trackbare Zahlen (kein Gewicht/Distanz/Dauer) - bekommen im
+# Dashboard eine Zähler-Karte statt eines Charts.
+SESSION_ONLY_EXERCISES = {"Sparring", "Kickboxen"}
+
+# Gruppierung für die Dashboard-Übersicht, 1:1 aus dem Wochenplan übernommen.
+PLAN_SECTIONS: list[tuple[str, list[str]]] = [
+    (
+        "Tag A – Beine & Druck",
+        [
+            "Kniebeuge",
+            "Bankdrücken",
+            "Rumänisches Kreuzheben",
+            "Schulterdrücken",
+            "Wadenheben",
+            "Hanging Leg Raises",
+        ],
+    ),
+    (
+        "Tag B – Zug & Nacken",
+        [
+            "Klimmzüge",
+            "Negative Klimmzüge",
+            "Langhantelrudern",
+            "Latzug",
+            "Face Pulls",
+            "Bizeps-Curls",
+            "Nacken-Curls",
+            "Farmer's Walk",
+        ],
+    ),
+    (
+        "Tag C – Ganzkörper, beinschonend",
+        [
+            "Bulgarian Split Squat",
+            "Dips",
+            "Schrägbankdrücken",
+            "Einarmiges KH-Rudern",
+            "Overhead Press",
+            "Pallof Press",
+            "Seitheben",
+        ],
+    ),
+    ("Kickboxen & Sparring", ["Kickboxen", "Sparring"]),
+    ("Ausdauer", ["Laufen"]),
+]
 
 
 def match_exercise(text: str) -> str | None:

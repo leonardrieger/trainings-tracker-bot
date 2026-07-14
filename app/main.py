@@ -17,6 +17,7 @@ from app.reminders import reminder_text, should_send_reminder
 app = FastAPI()
 
 BODYWEIGHT_ALIASES = {"gewicht", "körpergewicht", "koerpergewicht"}
+BODYWEIGHT_TARGET_RANGE = (87.0, 89.0)
 BERLIN = ZoneInfo("Europe/Berlin")
 
 
@@ -110,7 +111,7 @@ async def webhook(request: Request) -> dict:
             return {"ok": True}
         if exercise.lower() in BODYWEIGHT_ALIASES:
             entries = db.get_body_weight_history(user_id, limit=200)
-            image = render_progress_chart("Körpergewicht", entries)
+            image = render_progress_chart("Körpergewicht", entries, target_range=BODYWEIGHT_TARGET_RANGE)
             if image is None:
                 telegram.send_message(chat_id, "Keine ausreichenden Daten für Körpergewicht.")
             else:
@@ -141,9 +142,13 @@ def dashboard(token: str = "") -> HTMLResponse:
     if not _dashboard_authorized(token):
         return HTMLResponse("Unauthorized", status_code=401)
     user_id = _allowed_user_id()
-    exercises = db.list_exercises(user_id)
+    summary = db.get_exercise_summary(user_id)
     recent = db.get_recent_activity(user_id, limit=20)
-    return HTMLResponse(render_dashboard_html(exercises, recent, token))
+    latest_weight_history = db.get_body_weight_history(user_id, limit=1)
+    latest_weight = latest_weight_history[0] if latest_weight_history else None
+    training_days = db.get_training_days_count(user_id)
+    html = render_dashboard_html(recent, token, latest_weight, training_days, summary)
+    return HTMLResponse(html)
 
 
 @app.get("/dashboard/chart.png")
@@ -153,11 +158,10 @@ def dashboard_chart(exercise: str, token: str = "") -> Response:
     user_id = _allowed_user_id()
     if exercise.lower() in BODYWEIGHT_ALIASES:
         entries = db.get_body_weight_history(user_id, limit=200)
-        label = "Körpergewicht"
+        image = render_progress_chart("Körpergewicht", entries, target_range=BODYWEIGHT_TARGET_RANGE)
     else:
         entries = db.get_history(user_id, exercise, limit=200)
-        label = exercise
-    image = render_progress_chart(label, entries)
+        image = render_progress_chart(exercise, entries)
     if image is None:
         return Response(status_code=404)
     return Response(content=image, media_type="image/png")

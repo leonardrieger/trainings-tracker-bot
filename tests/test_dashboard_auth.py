@@ -27,12 +27,17 @@ def test_dashboard_mit_falschem_token_401(monkeypatch):
 
 def test_dashboard_mit_richtigem_token_200(monkeypatch):
     monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
-    with patch("app.main.db.list_exercises", return_value=["Bankdrücken"]), patch(
+    summary = {"Bankdrücken": {"count": 2, "last": "2026-07-14T07:00:00"}}
+    with patch("app.main.db.get_exercise_summary", return_value=summary), patch(
         "app.main.db.get_recent_activity", return_value=[]
+    ), patch("app.main.db.get_body_weight_history", return_value=[]), patch(
+        "app.main.db.get_training_days_count", return_value=3
     ):
         r = client.get("/dashboard?token=richtig")
     assert r.status_code == 200
     assert "Bankdrücken" in r.text
+    assert "Tag A" in r.text
+    assert "Noch keine Daten" in r.text
 
 
 def test_dashboard_chart_ohne_token_401():
