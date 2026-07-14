@@ -122,3 +122,25 @@ def test_get_last_sets_respektiert_limit():
     with patch("app.db.get_client", return_value=_mock_last_sets_rows(rows)):
         result = db.get_last_sets(42, limit=3)
     assert len(result) == 3
+
+
+def _mock_max_weight_rows(rows: list[dict]) -> MagicMock:
+    mock_client = MagicMock()
+    chain = (
+        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value
+        .order.return_value.limit.return_value
+    )
+    chain.execute.return_value.data = rows
+    return mock_client
+
+
+def test_get_max_weight_liefert_hoechsten_wert():
+    with patch("app.db.get_client", return_value=_mock_max_weight_rows([{"weight_kg": 100}])):
+        result = db.get_max_weight(42, "Bankdrücken")
+    assert result == 100
+
+
+def test_get_max_weight_ohne_eintraege_liefert_none():
+    with patch("app.db.get_client", return_value=_mock_max_weight_rows([])):
+        result = db.get_max_weight(42, "Bankdrücken")
+    assert result is None

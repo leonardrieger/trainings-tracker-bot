@@ -42,7 +42,9 @@ def test_start_command():
 
 
 def test_normal_message_inserts_and_replies():
-    with patch("app.main.db.insert_log") as insert, patch("app.main.telegram.send_message") as send:
+    with patch("app.main.db.insert_log") as insert, patch(
+        "app.main.db.get_max_weight", return_value=None
+    ), patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
         assert r.status_code == 200
         insert.assert_called_once()
@@ -50,6 +52,34 @@ def test_normal_message_inserts_and_replies():
         assert args[0] == 42
         assert args[1].exercise == "Bankdrücken"
         send.assert_called_once_with(42, "✅ Bankdrücken – 2 Sätze × 8 Wdh. @ 80kg")
+
+
+def test_normal_message_neuer_rekord_wird_gemeldet():
+    with patch("app.main.db.insert_log"), patch(
+        "app.main.db.get_max_weight", return_value=75
+    ), patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
+    assert r.status_code == 200
+    assert "Neuer Rekord" in send.call_args[0][1]
+    assert "75kg" in send.call_args[0][1]
+
+
+def test_normal_message_kein_rekord_bei_gleichem_gewicht():
+    with patch("app.main.db.insert_log"), patch(
+        "app.main.db.get_max_weight", return_value=80
+    ), patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
+    assert r.status_code == 200
+    assert "Neuer Rekord" not in send.call_args[0][1]
+
+
+def test_normal_message_erster_eintrag_kein_rekord():
+    with patch("app.main.db.insert_log"), patch(
+        "app.main.db.get_max_weight", return_value=None
+    ), patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
+    assert r.status_code == 200
+    assert "Neuer Rekord" not in send.call_args[0][1]
 
 
 def test_unauthorized_user_ignored():
@@ -147,7 +177,9 @@ def test_callback_query_von_nicht_erlaubtem_nutzer_wird_ignoriert():
 def test_sprachnachricht_wird_transkribiert_und_geloggt():
     with patch("app.main.telegram.get_file_bytes", return_value=b"fake-audio"), patch(
         "app.main.transcribe.transcribe_voice", return_value="3x8 80kg Bankdrücken"
-    ), patch("app.main.db.insert_log") as insert, patch("app.main.telegram.send_message") as send:
+    ), patch("app.main.db.insert_log") as insert, patch(
+        "app.main.db.get_max_weight", return_value=None
+    ), patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_voice_update())
     assert r.status_code == 200
     insert.assert_called_once()
@@ -230,7 +262,9 @@ def test_webhook_secret_fehlt_im_header_wird_ignoriert(monkeypatch):
 
 def test_webhook_secret_korrekt_wird_verarbeitet(monkeypatch):
     monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "geheim")
-    with patch("app.main.db.insert_log") as insert, patch("app.main.telegram.send_message"):
+    with patch("app.main.db.insert_log") as insert, patch(
+        "app.main.db.get_max_weight", return_value=None
+    ), patch("app.main.telegram.send_message"):
         r = client.post(
             "/webhook",
             json=_update("3x8 80kg Bankdrücken"),
@@ -242,8 +276,8 @@ def test_webhook_secret_korrekt_wird_verarbeitet(monkeypatch):
 
 def test_db_fehler_fuehrt_zu_freundlicher_meldung_statt_500():
     with patch("app.main.db.insert_log", side_effect=Exception("supabase down")), patch(
-        "app.main.telegram.send_message"
-    ) as send:
+        "app.main.db.get_max_weight", return_value=None
+    ), patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("3x8 80kg Bankdrücken"))
         assert r.status_code == 200
         send.assert_called_once()

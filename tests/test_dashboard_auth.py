@@ -81,7 +81,9 @@ def test_dashboard_log_ohne_token_401():
 
 def test_dashboard_log_erkannter_eintrag_wird_gespeichert(monkeypatch):
     monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
-    with patch("app.main.db.insert_log") as insert:
+    with patch("app.main.db.insert_log") as insert, patch(
+        "app.main.db.get_max_weight", return_value=None
+    ):
         r = client.post(
             "/dashboard/log?token=richtig",
             data={"text": "3x8 80kg Bankdrücken"},
@@ -107,7 +109,9 @@ def test_dashboard_log_nicht_erkannter_text_speichert_nicht(monkeypatch):
 
 def test_dashboard_log_bei_db_fehler_redirect_statt_500(monkeypatch):
     monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
-    with patch("app.main.db.insert_log", side_effect=Exception("supabase down")):
+    with patch("app.main.db.insert_log", side_effect=Exception("supabase down")), patch(
+        "app.main.db.get_max_weight", return_value=None
+    ):
         r = client.post(
             "/dashboard/log?token=richtig",
             data={"text": "3x8 80kg Bankdrücken"},

@@ -18,6 +18,7 @@ from app.chart import render_progress_chart
 from app.config import TARGET_WEIGHT_MAX, TARGET_WEIGHT_MIN
 from app.dashboard import render_dashboard_html
 from app.llm_parser import parse_message
+from app.parser import ParsedWorkout
 from app.reminders import (
     reminder_text,
     should_send_reminder,
@@ -205,6 +206,19 @@ async def webhook(request: Request) -> dict:
     return {"ok": True}
 
 
+def _log_workout_and_build_message(user_id: int, parsed: ParsedWorkout) -> str:
+    if parsed.record_type == "bodyweight":
+        db.insert_body_weight(user_id, parsed.weight_kg, parsed.raw_text)
+        return parsed.confirmation_text()
+
+    previous_max = db.get_max_weight(user_id, parsed.exercise) if parsed.weight_kg is not None else None
+    db.insert_log(user_id, parsed)
+    message = parsed.confirmation_text()
+    if previous_max is not None and parsed.weight_kg > previous_max:
+        message += f"\n🎉 Neuer Rekord! Vorher: {previous_max:g}kg"
+    return message
+
+
 def _undo_message(deleted: dict | None) -> str:
     if deleted is None:
         return "Nichts zum Löschen gefunden."
@@ -321,11 +335,7 @@ def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
 
     parsed = parse_message(text)
     if parsed.recognized:
-        if parsed.record_type == "bodyweight":
-            db.insert_body_weight(user_id, parsed.weight_kg, parsed.raw_text)
-        else:
-            db.insert_log(user_id, parsed)
-        telegram.send_message(chat_id, parsed.confirmation_text())
+        telegram.send_message(chat_id, _log_workout_and_build_message(user_id, parsed))
         return {"ok": True}
 
     # Kein Log-Eintrag erkannt -> als freie Frage an den Chat weiterreichen,
@@ -396,11 +406,7 @@ def dashboard_log(text: str = Form(...), token: str = "") -> Response:
         user_id = _allowed_user_id()
         parsed = parse_message(text)
         if parsed.recognized:
-            if parsed.record_type == "bodyweight":
-                db.insert_body_weight(user_id, parsed.weight_kg, parsed.raw_text)
-            else:
-                db.insert_log(user_id, parsed)
-            msg = parsed.confirmation_text()
+            msg = _log_workout_and_build_message(user_id, parsed)
         else:
             msg = f'⚠️ Nicht erkannt: "{text}". Versuch\'s z.B. mit "3x8 100kg Kniebeuge".'
         return _dashboard_redirect(token, msg)

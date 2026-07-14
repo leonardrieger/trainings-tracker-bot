@@ -53,6 +53,26 @@ def get_history(telegram_user_id: int, exercise: str, limit: int = 10) -> list[d
     return response.data
 
 
+def get_max_weight(telegram_user_id: int, exercise: str) -> float | None:
+    """Höchstes je für diese Übung geloggte Gewicht (für PR-Erkennung).
+
+    nullsfirst=False ist nötig, weil Postgres NULLs bei DESC standardmäßig zuerst
+    einsortiert - ohne das würde eine Übung mit gemischten None/Zahl-Einträgen
+    (z.B. Klimmzüge erst ohne, später mit Zusatzgewicht) fälschlich None liefern.
+    """
+    response = (
+        get_client()
+        .table(TABLE)
+        .select("weight_kg")
+        .eq("telegram_user_id", telegram_user_id)
+        .eq("exercise", exercise)
+        .order("weight_kg", desc=True, nullsfirst=False)
+        .limit(1)
+        .execute()
+    )
+    return response.data[0]["weight_kg"] if response.data else None
+
+
 def get_exercise_summary(telegram_user_id: int) -> dict[str, dict]:
     """Pro Übung: Anzahl Einträge + Datum des letzten Eintrags."""
     response = (
