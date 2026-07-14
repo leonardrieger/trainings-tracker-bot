@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import chat, db, telegram
 from app.chart import render_progress_chart
+from app.config import TARGET_WEIGHT_MAX, TARGET_WEIGHT_MIN
 from app.dashboard import render_dashboard_html
 from app.llm_parser import parse_message
 from app.reminders import (
@@ -29,7 +30,7 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 BODYWEIGHT_ALIASES = {"gewicht", "körpergewicht", "koerpergewicht"}
-BODYWEIGHT_TARGET_RANGE = (87.0, 89.0)
+BODYWEIGHT_TARGET_RANGE = (TARGET_WEIGHT_MIN, TARGET_WEIGHT_MAX)
 BERLIN = ZoneInfo("Europe/Berlin")
 
 _SERVICE_WORKER_JS = """\

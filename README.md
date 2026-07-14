@@ -1,10 +1,41 @@
 # Trainings-Tracker Telegram-Bot
 
-Trackt Trainingseinheiten per Telegram-Nachricht (z.B. "2 Sätze 8 Wiederholungen 80kg
-Bankdrücken"), speichert sie in Supabase und zeigt Fortschritt per `/verlauf` und
-`/chart`. Nachrichten werden per kostenloser Groq-LLM-API in strukturierte Daten
-umgewandelt (versteht auch freie Formulierungen); ist kein `GROQ_API_KEY` gesetzt oder
-schlägt der API-Call fehl, springt automatisch ein Regex-Parser als Fallback ein.
+Ein persönlicher Fitness-Tracker, der **komplett per Telegram in freier Sprache**
+bedient wird: Du schickst „3×8 100 kg Kniebeuge" oder „Gewicht heute 84,2 kg", und der
+Bot legt daraus strukturierte Einträge an. Ein installierbares **Web-Dashboard (PWA)**
+zeigt deinen Fortschritt, und du kannst dem Bot ganz normale Fragen stellen wie
+„Was steht heute an?".
+
+Gebaut, um **kostenlos** zu laufen (Supabase Free + Render Free + Groq Free) und für
+eine Person gedacht — zum Selbst-Hosten forken und in [`app/config.py`](app/config.py)
+den eigenen Trainingsplan eintragen.
+
+![Beispiel-Fortschrittschart aus dem Bot](docs/beispiel-chart.png)
+
+## Features
+
+- **Logging in freier Sprache** — Kraft (`3×8 100 kg Kniebeuge`), Cardio
+  (`30 min 5 km Laufen`) und Körpergewicht (`Gewicht heute 84 kg`), egal in welcher
+  Satzstellung. Groq-LLM-Parsing mit automatischem Regex-Fallback (funktioniert auch
+  ganz ohne API-Key).
+- **PWA-Dashboard** — app-artige Ansicht (Heute / Fortschritt / Verlauf) mit
+  Wochenkalender, Fortschritts-Charts und Schnell-Eingabe; auf dem Handy als App
+  installierbar.
+- **LLM-Chat über Telegram** — freie Fragen zu Plan und Verlauf; nicht als Log
+  erkannte Nachrichten werden automatisch als Frage beantwortet.
+- **Automatische Erinnerungen** — morgendlicher Tagesplan + sonntäglicher
+  Wochenrückblick, ausgelöst über einen externen Ping-Dienst (hält zugleich den
+  Free-Tier-Server wach).
+- **Befehle** — `/verlauf`, `/chart`, `/programm`, `/undo`.
+
+## Tech-Stack
+
+Python 3.12 · FastAPI · Supabase (Postgres) · Groq LLM · Matplotlib · Deploy auf Render.
+Details zur Architektur in [`PROJEKT.md`](PROJEKT.md).
+
+---
+
+Die folgenden Schritte richten eine eigene Instanz ein.
 
 ## 1. Telegram-Bot erstellen
 

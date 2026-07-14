@@ -43,6 +43,7 @@ Telegram (Handy) --Webhook--> Render (FastAPI) --insert/query--> Supabase (Postg
 
 ```
 app/
+  config.py       Persönliche Programm-Config: Wochenplan, Programmlänge, Zielgewicht, Deload-Fenster
   main.py         FastAPI-App: Webhook, /cron/tick, /dashboard (+/log, /undo), PWA-Routen, Command-Routing
   parser.py       Regex-Parsing von Nachrichten -> ParsedWorkout
   llm_parser.py   Groq-LLM-Parsing mit Regex-Fallback
@@ -50,9 +51,9 @@ app/
   exercises.py    Übungsnamen + Aliase, PLAN_SECTIONS (Tag A/B/C…), SESSION_ONLY_EXERCISES
   db.py           Supabase-Wrapper (Insert/Query/State/Delete)
   telegram.py     sendMessage / sendPhoto
-  chart.py        Matplotlib-Fortschritts-Charts (Dark-Palette)
+  chart.py        Matplotlib-Fortschritts-Charts (minimalistische Dark-Palette)
   reminders.py    Reine Logik: Reminder, Wochenzähler, Klimmzug-Phasen, Deload, Wochenrückblick
-  dashboard.py    HTML-Dashboard (Stat-Tiles, Wochenkalender, Eingabe-Formular, PWA-Meta-Tags)
+  dashboard.py    App-artiges Dashboard (Tabs Heute/Fortschritt/Verlauf, Eingabe-Formular, PWA-Meta-Tags)
   static/         PWA-Icons (icon-192.png, icon-512.png)
 sql/schema.sql    Tabellen: workout_logs, body_weight_logs, bot_state
 tests/            113 Tests (pytest)

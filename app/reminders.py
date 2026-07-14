@@ -1,40 +1,29 @@
-"""Reine Logik für Trainings-Erinnerungen, unabhängig von HTTP/DB testbar."""
+"""Reine Logik für Trainings-Erinnerungen, unabhängig von HTTP/DB testbar.
+
+Programm-spezifische Werte (Wochenplan, Programmlänge, Deload-Fenster, Zeitpunkte)
+kommen aus ``app.config`` und werden hier für Rückwärtskompatibilität re-exportiert.
+"""
 from __future__ import annotations
 
 from datetime import date, datetime
 
-TRAINING_PLAN: dict[int, str] = {
-    0: "Gym – Tag A (Beine + Druck, schwer)",
-    1: "Kickboxen",
-    2: "Gym – Tag B (Zug + Nacken) oder Calisthenics-Park",
-    3: "Kickboxen",
-    4: "Gym – Tag C (Ganzkörper, beinschonend)",
-    5: "Sparring – das ist dein HIIT, kein Extra-Cardio",
-    6: "Lockerer Dauerlauf (Zone 2) + Mobility",
-}
-
-# Kurzform für kompakte Anzeigen (z.B. Wochenkalender im Dashboard)
-TRAINING_PLAN_SHORT: dict[int, str] = {
-    0: "Tag A",
-    1: "Kickboxen",
-    2: "Tag B",
-    3: "Kickboxen",
-    4: "Tag C",
-    5: "Sparring",
-    6: "Laufen",
-}
+from app.config import (
+    DELOAD_END_WEEK,
+    DELOAD_START_WEEK,
+    PROGRAM_LENGTH_WEEKS,
+    PULLUP_DAY_WEEKDAY,
+    REMINDER_HOUR,
+    TRAINING_PLAN,
+    TRAINING_PLAN_SHORT,
+    WEEKLY_SUMMARY_HOUR,
+    WEEKLY_SUMMARY_WEEKDAY,
+    WEEKLY_TRAINING_TARGET,
+)
 
 WEEKDAY_ABBR = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
-TAG_B_WEEKDAY = 2  # Mittwoch: Klimmzug-Tag
-
-REMINDER_HOUR = 7
+TAG_B_WEEKDAY = PULLUP_DAY_WEEKDAY  # Wochentag mit Klimmzug-Fokus
 REMINDER_WINDOW_MINUTES = 10
-
-WEEKLY_SUMMARY_WEEKDAY = 6  # Sonntag
-WEEKLY_SUMMARY_HOUR = 20
-
-PROGRAM_LENGTH_WEEKS = 12
 
 
 def week_number_for(today: date, start_date: date | None) -> int | None:
@@ -55,7 +44,7 @@ def klimmzug_phase_hint(week_number: int | None) -> str | None:
 
 
 def is_deload_week(week_number: int | None) -> bool:
-    return week_number is not None and 6 <= week_number <= 8
+    return week_number is not None and DELOAD_START_WEEK <= week_number <= DELOAD_END_WEEK
 
 
 def reminder_text(day: date, week_number: int | None = None) -> str:
@@ -70,7 +59,10 @@ def reminder_text(day: date, week_number: int | None = None) -> str:
         if hint:
             lines.append(hint)
     if is_deload_week(week_number):
-        lines.append("📉 Deload-Fenster (Woche 6-8): diese Woche ~60% Gewicht, halbe Sätze einplanen.")
+        lines.append(
+            f"📉 Deload-Fenster (Woche {DELOAD_START_WEEK}-{DELOAD_END_WEEK}): "
+            "diese Woche ~60% Gewicht, halbe Sätze einplanen."
+        )
     lines.append("Vergiss nicht zu tracken!")
     return "\n\n".join(lines)
 
@@ -90,11 +82,12 @@ def should_send_weekly_summary(now: datetime, last_sent: date | None) -> bool:
 
 
 def weekly_summary_text(training_days: int, weight_change: tuple[float, float] | None) -> str:
-    lines = ["📊 Wochenrückblick", f"Trainingstage geloggt: {training_days} von 6 geplant"]
+    lines = ["📊 Wochenrückblick", f"Trainingstage geloggt: {training_days} von {WEEKLY_TRAINING_TARGET} geplant"]
     if weight_change is not None:
         start, end = weight_change
         delta = end - start
         arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
         lines.append(f"Gewicht: {start:g} → {end:g} kg ({arrow} {abs(delta):.1f} kg)")
-    lines.append("Stark durchgezogen! 💪" if training_days >= 5 else "Nächste Woche wieder mehr Einheiten schaffen 💪")
+    strong = training_days >= WEEKLY_TRAINING_TARGET - 1
+    lines.append("Stark durchgezogen! 💪" if strong else "Nächste Woche wieder mehr Einheiten schaffen 💪")
     return "\n".join(lines)

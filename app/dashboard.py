@@ -9,6 +9,7 @@ from __future__ import annotations
 import html
 from datetime import date, timedelta
 
+from app.config import TARGET_WEIGHT_MAX, TARGET_WEIGHT_MIN
 from app.exercises import PLAN_SECTIONS, SESSION_ONLY_EXERCISES
 from app.reminders import (
     PROGRAM_LENGTH_WEEKS,
@@ -19,7 +20,9 @@ from app.reminders import (
 )
 from urllib.parse import quote
 
-TARGET_WEIGHT_RANGE = "87–89 kg"
+_min = f"{TARGET_WEIGHT_MIN:g}".replace(".", ",")
+_max = f"{TARGET_WEIGHT_MAX:g}".replace(".", ",")
+TARGET_WEIGHT_RANGE = f"{_min}–{_max} kg"
 
 WEEKDAY_FULL = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 MONTH_FULL = [
