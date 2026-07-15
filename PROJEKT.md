@@ -4,13 +4,6 @@ _Stand: 2026-07-15 (PR-Erkennung, Übungsverwaltung im Dashboard,
 Sprachnachrichten-Logging, editierbarer Wochenplan, Bequemlichkeits-Features,
 Python-Version-Fix)_
 
-> ⚠️ **Offener Migrations-Schritt:** `sql/schema.sql` hat eine neue `exercises`-Tabelle
-> (für die Übungsverwaltung). Bis die im Supabase-SQL-Editor einmalig ausgeführt wird,
-> schlägt **jeder** `db.get_exercise_catalog()`-Aufruf fehl — betrifft nicht nur den
-> neuen „Übungen"-Tab, sondern auch ganz normales Loggen per Telegram/Dashboard (wird
-> zwar sauber als freundliche Fehlermeldung abgefangen statt abzustürzen, aber nichts
-> wird mehr gespeichert). Migration ausführen, sobald dieser Stand deployed wird.
-
 Persönlicher Fitness-Tracker: Trainingseinheiten werden per Telegram-Nachricht in
 freier Sprache geloggt (z.B. „2 Sätze 8 Wiederholungen 80kg Bankdrücken"), landen in
 einer Datenbank und werden auf einem installierbaren Web-Dashboard visualisiert.
@@ -94,7 +87,7 @@ requirements.txt, .python-version, .env.example, README.md
   aus `app/exercises.py` gelten unverändert; wird bei der ersten Änderung über den
   „Übungen"-Tab einmalig komplett mit diesen Defaults befüllt (siehe
   `db._seed_exercises_if_empty`), damit ein einzelner Edit nicht alle anderen Übungen
-  unsichtbar macht. **Migration noch ausstehend** (siehe Hinweis oben).
+  unsichtbar macht.
 
 ---
 
@@ -225,9 +218,9 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 1. **PR-Erkennung + Übungsverwaltung im Dashboard** — Bot meldet „🎉 Neuer Rekord!" bei
    neuem Bestgewicht pro Übung. Neuer „Übungen"-Tab: Übungen/Aliase/Tag-Zuordnung/
    Cardio-Flags voll verwaltbar statt nur per Code-Deploy in `app/exercises.py` —
-   neue `exercises`-Tabelle (Migration in `sql/schema.sql` noch auszuführen, siehe
-   Hinweis oben), Seed-bei-erstem-Schreiben verhindert, dass ein einzelner Edit alle
-   anderen Übungen unsichtbar macht, Umbenennung kaskadiert auf `workout_logs`.
+   neue `exercises`-Tabelle (Migration ausgeführt), Seed-bei-erstem-Schreiben
+   verhindert, dass ein einzelner Edit alle anderen Übungen unsichtbar macht,
+   Umbenennung kaskadiert auf `workout_logs`.
 2. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
    Tippen. Transkription via Groq Whisper (kostenlos), rohes Transkript kommt immer
    zuerst als Echo zurück (Transparenz bei möglichen Fehltranskriptionen deutscher
@@ -293,5 +286,4 @@ uvicorn app.main:app --reload    # lokaler Server
 ```
 
 Schema-Änderungen: Inhalt von `sql/schema.sql` im Supabase-Dashboard → SQL Editor
-ausführen (keine CLI nötig). **Aktuell ausstehend:** die neue `exercises`-Tabelle
-(siehe Hinweis ganz oben) — ohne sie schlägt jeder Log-Versuch fehl.
+ausführen (keine CLI nötig).
