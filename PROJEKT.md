@@ -232,9 +232,9 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
    abzweigte. Da dieser Branch auch eine veraltete README-Version enthielt, wurden
    **nur die PNGs** per `git checkout <branch> -- docs/screenshots/` auf `master`
    übernommen, das bereits überarbeitete README blieb unangetastet (Commit
-   `4f48f11`). Der Nebenbranch existiert auf GitHub weiterhin (noch nicht gelöscht
-   — Löschen von Branches ist eine destruktive Aktion, die der Nutzer explizit
-   freigeben muss). Nach dem Push zeigte GitHub kurzzeitig noch die alten Bilder
+   `4f48f11`). Der Nebenbranch wurde nach Nutzer-Freigabe gelöscht (destruktive
+   Git-Aktionen brauchen hier explizite Zustimmung). Nach dem Push zeigte GitHub
+   kurzzeitig noch die alten Bilder
    (Browser-/Bild-Proxy-Cache bei unverändertem Dateinamen); per `curl -I` auf
    `raw.githubusercontent.com` wurde bestätigt, dass der Server bereits die neue
    Dateigröße ausliefert — mit Hard-Reload war es dann sofort aktuell.
@@ -329,10 +329,6 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
   fixem `ALLOWED_TELEGRAM_USER_ID`. Deutlich größerer Schritt (Auth, Datentrennung,
   Onboarding) — nur sinnvoll, wenn das Projekt bewusst von „für mich" zu „für viele"
   gedreht werden soll.
-- **Aufräumen:** Remote-Branch `claude/fervent-bun-e414f9` auf GitHub existiert noch
-  (bereits vollständig in `master` aufgegangen, siehe Punkt 1 unter „Bereits
-  umgesetzte Features") — Löschen erfordert eine explizite Freigabe des Nutzers, da
-  es eine destruktive Git-Aktion ist.
 
 ---
 
