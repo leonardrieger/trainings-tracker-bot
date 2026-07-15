@@ -97,6 +97,12 @@ _STYLE = """
   .undo { background: none; border: none; color: var(--ink-mute); font-size: .8rem; padding: .2rem 0; cursor: pointer; font-family: inherit; }
   .undo:hover { color: var(--ink-dim); }
   .flash { margin: .8rem 0 0; padding: .7rem .9rem; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: .85rem; border: 1px solid rgba(216,166,87,.22); }
+  .flash-float {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 14px);
+    z-index: 11; margin: 0; max-width: min(420px, calc(100vw - 2rem));
+    background: #221d12; box-shadow: 0 6px 24px rgba(0,0,0,.45); white-space: pre-line;
+  }
 
   .week-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: .3rem; margin: 2rem 0 0; padding-top: 1.6rem; border-top: 1px solid var(--line); }
   .day { text-align: center; }
@@ -341,7 +347,6 @@ def _heute_view(
     week_number: int | None,
     trained_dates: set[str],
     recent: list[dict],
-    flash: str | None,
     plan_long: dict[int, str],
     plan_short: dict[int, str],
     active: bool,
@@ -383,8 +388,6 @@ def _heute_view(
         "</form>"
         f"{_exercise_datalist(exercise_aliases)}"
     )
-    if flash:
-        parts.append(f'<div class="flash">{_t(flash)}</div>')
 
     if today is not None:
         week_start = today - timedelta(days=today.weekday())
@@ -757,6 +760,8 @@ _SCRIPT = """
         if (panel) panel.hidden = !panel.hidden;
       });
     });
+    var flash = document.querySelector(".flash-float");
+    if (flash) { setTimeout(function () { flash.remove(); }, 6000); }
   }
 
   function showAjaxError(form) {
@@ -853,7 +858,7 @@ def render_dashboard_html(
         week_value = "fertig"
 
     heute = _heute_view(
-        encoded_token, today, week_value, week_number, trained_dates or set(), recent, flash,
+        encoded_token, today, week_value, week_number, trained_dates or set(), recent,
         plan_long, plan_short, view == "heute", last_sets, exercise_aliases, session_only_exercises,
     )
     fortschritt = _fortschritt_view(
@@ -866,6 +871,10 @@ def render_dashboard_html(
         encoded_token, exercise_aliases, cardio_exercises, session_only_exercises, plan_sections,
         view == "uebungen",
     )
+
+    # Flash als schwebender Toast über der Tab-Leiste statt im Heute-View:
+    # so ist die Bestätigung auch nach Speichern im Verlauf/Plan/Übungen-Tab sichtbar.
+    flash_html = f'<div class="flash flash-float">{_t(flash)}</div>' if flash else ""
 
     return f"""<!doctype html>
 <html lang="de">
@@ -887,6 +896,7 @@ def render_dashboard_html(
     {verlauf}
     {plan}
     {uebungen}
+    {flash_html}
     {_tabbar(view)}
   </div>
   {_SCRIPT}

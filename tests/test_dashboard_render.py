@@ -157,15 +157,15 @@ def test_ohne_today_kein_wochenstreifen():
     assert '<div class="week-strip">' not in html
 
 
-def test_flash_wird_angezeigt():
+def test_flash_wird_als_schwebender_toast_angezeigt():
     html = render_dashboard_html([], "token", None, training_days=0, flash="✅ Kniebeuge gespeichert")
-    assert 'class="flash"' in html
+    assert 'class="flash flash-float"' in html
     assert "✅ Kniebeuge gespeichert" in html
 
 
 def test_ohne_flash_kein_flash_banner():
     html = render_dashboard_html([], "token", None, training_days=0)
-    assert 'class="flash"' not in html
+    assert 'class="flash flash-float"' not in html
 
 
 def test_log_formular_und_undo_button_vorhanden():
