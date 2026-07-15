@@ -225,14 +225,28 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 
 ## Bereits umgesetzte Features (chronologisch, neueste zuerst)
 
-1. **Repo-Aufhübschung** — neuer README-Banner im Ember-Look (Activity-Ring mit
+1. **Screenshots aufs Ember-Design aktualisiert** — die fünf Galerie-PNGs unter
+   `docs/screenshots/` liefen als eigener Background-Task parallel zur
+   Repo-Aufhübschung (Punkt 2) und landeten deshalb zunächst auf einem eigenen
+   Branch (`claude/fervent-bun-e414f9`), der von einem älteren Commit-Stand
+   abzweigte. Da dieser Branch auch eine veraltete README-Version enthielt, wurden
+   **nur die PNGs** per `git checkout <branch> -- docs/screenshots/` auf `master`
+   übernommen, das bereits überarbeitete README blieb unangetastet (Commit
+   `4f48f11`). Der Nebenbranch existiert auf GitHub weiterhin (noch nicht gelöscht
+   — Löschen von Branches ist eine destruktive Aktion, die der Nutzer explizit
+   freigeben muss). Nach dem Push zeigte GitHub kurzzeitig noch die alten Bilder
+   (Browser-/Bild-Proxy-Cache bei unverändertem Dateinamen); per `curl -I` auf
+   `raw.githubusercontent.com` wurde bestätigt, dass der Server bereits die neue
+   Dateigröße ausliefert — mit Hard-Reload war es dann sofort aktuell.
+2. **Repo-Aufhübschung** — neuer README-Banner im Ember-Look (Activity-Ring mit
    Flamme, Heatmap-Punktfeld, generiert deterministisch per Skript), README
    editorial umgebaut: Tagline, erzählende Feature-Absätze statt Stichpunkte,
    Mermaid-Architekturdiagramm (rendert direkt auf GitHub), Setup-Schritte in
    aufklappbare `<details>`-Blöcke kollabiert, Nutzungs-Tabelle,
-   Screenshot-Dateinamen unverändert (Galerie-PNGs werden von einer separaten
-   Session erneuert). GitHub-Repo-Beschreibung geschärft + Topic `telegram`.
-2. **UI-Redesign „Ember"** — sticky App-Header mit Safe-Area-Padding (iPhone-
+   Screenshot-Dateinamen unverändert (Galerie-PNGs kamen wie in Punkt 1
+   beschrieben aus einer separaten Session). GitHub-Repo-Beschreibung geschärft +
+   Topic `telegram`.
+3. **UI-Redesign „Ember"** — sticky App-Header mit Safe-Area-Padding (iPhone-
    Statusleiste verdeckte vorher Inhalt), Streak-Karte zum Apple-Watch-artigen
    Activity-Ring umgebaut (SVG-Bogen = Trainingstage/Wochenziel, Amber-Gradient,
    Flamme im Zentrum, Füllanimation rein per CSS über `stroke-dashoffset`; der
@@ -241,7 +255,7 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
    schwebende Pill-Tab-Bar, gestaffelte Einblend-Animationen (nur
    transform/opacity, hinter `prefers-reduced-motion`). Markup der Tests
    unverändert — alle 263 weiterhin grün, nur `app/dashboard.py` angefasst.
-3. **Kalender-Heatmap + Streak-Karte mit Flammenanimation** — Verlauf-Tab zeigt
+4. **Kalender-Heatmap + Streak-Karte mit Flammenanimation** — Verlauf-Tab zeigt
    eine 26-Wochen-Heatmap der Trainingstage (binär trainiert/nicht, ein einziger
    zusätzlicher DB-Call, der auch die Streak-Berechnung speist); Heute-Tab zeigt
    unter dem Wochenstreifen eine Streak-Karte mit animierter SVG-Flamme
@@ -249,7 +263,7 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
    ein animierter `drop-shadow`-Filter würde pro Frame neu rastern). Neue reine
    Logik `weekly_day_counts`/`week_streak` in `reminders.py` (laufende Woche bricht
    die Serie nicht, zählt ab Zielerreichung mit), 13 neue Tests (263 gesamt).
-4. **README-Überarbeitung (Banner, Badges, Screenshots)** — SVG-Banner im
+5. **README-Überarbeitung (Banner, Badges, Screenshots)** — SVG-Banner im
    Dashboard-Look (dunkler Grund, Amber-Akzent, abstrakte Fortschrittslinie,
    `docs/banner.svg`) ersetzt den nackten Projekttitel; Badges für CI-Status,
    Python-Version, PWA und Lizenz direkt darunter. Neue Screenshot-Galerie zeigt
@@ -259,52 +273,52 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
    `db.*`-Funktionen gemockt, kein Zugriff auf die echte Supabase-DB), per
    headless Edge (`msedge --headless=new --screenshot=...`) abfotografiert.
    Ersetzt das alte einzelne Beispiel-Chart-Bild.
-5. **PR-Erkennung + Übungsverwaltung im Dashboard** — Bot meldet „🎉 Neuer Rekord!" bei
+6. **PR-Erkennung + Übungsverwaltung im Dashboard** — Bot meldet „🎉 Neuer Rekord!" bei
    neuem Bestgewicht pro Übung. Neuer „Übungen"-Tab: Übungen/Aliase/Tag-Zuordnung/
    Cardio-Flags voll verwaltbar statt nur per Code-Deploy in `app/exercises.py` —
    neue `exercises`-Tabelle (Migration ausgeführt), Seed-bei-erstem-Schreiben
    verhindert, dass ein einzelner Edit alle anderen Übungen unsichtbar macht,
    Umbenennung kaskadiert auf `workout_logs`.
-6. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
+7. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
    Tippen. Transkription via Groq Whisper (kostenlos), rohes Transkript kommt immer
    zuerst als Echo zurück (Transparenz bei möglichen Fehltranskriptionen deutscher
    Fachbegriffe), danach dieselbe Erkennungs-/Bestätigungs-/Chat-Fallback-Pipeline wie
    bei getippten Nachrichten. Kein Fallback bei Transkriptions-Fehlern möglich (anders
    als beim Text-Parsing) — eigene Fehlermeldung dafür.
-7. **Vier Bequemlichkeits-Features** — Übungsnamen-Autocomplete im Eingabefeld,
+8. **Vier Bequemlichkeits-Features** — Übungsnamen-Autocomplete im Eingabefeld,
    7-Tage-Delta am Gewicht-Chart, „Zuletzt"-Chips zum Wiederholen des letzten Satzes
    je Übung, Telegram-Inline-Tastaturen für `/verlauf` und `/chart` ohne Argument.
-8. **Dashboard-Routen gegen transiente DB-Fehler abgesichert** — bei einem kurzen
+9. **Dashboard-Routen gegen transiente DB-Fehler abgesichert** — bei einem kurzen
    Supabase-Netzwerk-Hänger zeigen `/dashboard*`-Routen jetzt eine freundliche
    Meldung statt der rohen FastAPI-500-Seite (analog zum bestehenden Muster im
    Webhook).
-9. **Python-Version-Pinning repariert** — Render beachtet `runtime.txt` nicht mehr
+10. **Python-Version-Pinning repariert** — Render beachtet `runtime.txt` nicht mehr
    (Versions-Auswahl umgestellt auf `PYTHON_VERSION`-Env-Var/`.python-version`);
    Build lief dadurch unbemerkt wieder auf Python 3.14. Behoben durch
    `.python-version` mit `3.12.10`.
-10. **Editierbarer Wochenplan** — neuer „Plan"-Tab im Dashboard, Wochenplan-Text liegt
+11. **Editierbarer Wochenplan** — neuer „Plan"-Tab im Dashboard, Wochenplan-Text liegt
    als Override in `bot_state` (JSON) statt nur in `app/config.py`, Fallback pro Tag
    auf die Config-Defaults, wirkt sich auf Erinnerung/Heute-Tab/Chat-Kontext aus.
-11. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
+12. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
    Paare (global in `bot_state`, kein Schema-Change), automatischer Reset nach 60 Min
    Inaktivität.
-12. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
+13. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
    privaten Notizen/echte URLs mehr), `CONTRIBUTING.md`, README mit Feature-Übersicht
    und Beispiel-Chart, GitHub-Beschreibung + Topics gesetzt, Repo ist jetzt **public**.
-13. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
+14. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
    Programmlänge, Zielgewicht, Deload-Fenster, Erinnerungs-Zeiten.
-14. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
+15. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
     (Heute/Fortschritt/Verlauf), minimalistischer Dark-Look, neue Chart-Palette.
-15. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
-16. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
+16. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
+17. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
     auch direkt im Browser möglich (nicht mehr nur per Telegram).
-17. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
+18. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
     werden über Groq mit Plan- und Verlaufskontext beantwortet.
-18. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
-19. **Dashboard: Wochenkalender mit echten Wochentagen**
-20. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
-21. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
-22. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
+19. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
+20. **Dashboard: Wochenkalender mit echten Wochentagen**
+21. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
+22. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
+23. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
 
 ---
 
@@ -315,6 +329,10 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
   fixem `ALLOWED_TELEGRAM_USER_ID`. Deutlich größerer Schritt (Auth, Datentrennung,
   Onboarding) — nur sinnvoll, wenn das Projekt bewusst von „für mich" zu „für viele"
   gedreht werden soll.
+- **Aufräumen:** Remote-Branch `claude/fervent-bun-e414f9` auf GitHub existiert noch
+  (bereits vollständig in `master` aufgegangen, siehe Punkt 1 unter „Bereits
+  umgesetzte Features") — Löschen erfordert eine explizite Freigabe des Nutzers, da
+  es eine destruktive Git-Aktion ist.
 
 ---
 
