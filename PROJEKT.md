@@ -1,8 +1,8 @@
 # Trainings-Tracker Telegram-Bot — Projektzusammenfassung
 
-_Stand: 2026-07-15 (PR-Erkennung, Übungsverwaltung im Dashboard,
-Sprachnachrichten-Logging, editierbarer Wochenplan, Bequemlichkeits-Features,
-Python-Version-Fix)_
+_Stand: 2026-07-15 (README-Überarbeitung mit Banner/Screenshots, PR-Erkennung,
+Übungsverwaltung im Dashboard, Sprachnachrichten-Logging, editierbarer Wochenplan,
+Bequemlichkeits-Features, Python-Version-Fix)_
 
 Persönlicher Fitness-Tracker: Trainingseinheiten werden per Telegram-Nachricht in
 freier Sprache geloggt (z.B. „2 Sätze 8 Wiederholungen 80kg Bankdrücken"), landen in
@@ -65,7 +65,8 @@ app/
                   mit Autocomplete + Wiederholen-Chips, PWA-Meta-Tags)
   static/         PWA-Icons (icon-192.png, icon-512.png)
 sql/schema.sql    Tabellen: workout_logs, body_weight_logs, bot_state, exercises
-docs/             Beispiel-Chart fürs README
+docs/             banner.svg (README-Header im Dashboard-Look) + screenshots/*.png
+                  (alle fünf Dashboard-Tabs, siehe „Bereits umgesetzte Features")
 tests/            211 Tests (pytest) + conftest.py (Autouse-Fixture für Übungs-Katalog-Default)
 .github/workflows/test.yml   CI: pytest bei jedem Push/PR
 LICENSE           MIT
@@ -215,52 +216,62 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 
 ## Bereits umgesetzte Features (chronologisch, neueste zuerst)
 
-1. **PR-Erkennung + Übungsverwaltung im Dashboard** — Bot meldet „🎉 Neuer Rekord!" bei
+1. **README-Überarbeitung (Banner, Badges, Screenshots)** — SVG-Banner im
+   Dashboard-Look (dunkler Grund, Amber-Akzent, abstrakte Fortschrittslinie,
+   `docs/banner.svg`) ersetzt den nackten Projekttitel; Badges für CI-Status,
+   Python-Version, PWA und Lizenz direkt darunter. Neue Screenshot-Galerie zeigt
+   alle fünf Dashboard-Tabs (Heute/Fortschritt/Verlauf/Plan/Übungen) als echte
+   Renderings der Dashboard-HTML/CSS/JS unter `docs/screenshots/`. Erzeugt über
+   einen lokal gestarteten Server mit frei erfundenen Demo-Trainingsdaten (alle
+   `db.*`-Funktionen gemockt, kein Zugriff auf die echte Supabase-DB), per
+   headless Edge (`msedge --headless=new --screenshot=...`) abfotografiert.
+   Ersetzt das alte einzelne Beispiel-Chart-Bild.
+2. **PR-Erkennung + Übungsverwaltung im Dashboard** — Bot meldet „🎉 Neuer Rekord!" bei
    neuem Bestgewicht pro Übung. Neuer „Übungen"-Tab: Übungen/Aliase/Tag-Zuordnung/
    Cardio-Flags voll verwaltbar statt nur per Code-Deploy in `app/exercises.py` —
    neue `exercises`-Tabelle (Migration ausgeführt), Seed-bei-erstem-Schreiben
    verhindert, dass ein einzelner Edit alle anderen Übungen unsichtbar macht,
    Umbenennung kaskadiert auf `workout_logs`.
-2. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
+3. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
    Tippen. Transkription via Groq Whisper (kostenlos), rohes Transkript kommt immer
    zuerst als Echo zurück (Transparenz bei möglichen Fehltranskriptionen deutscher
    Fachbegriffe), danach dieselbe Erkennungs-/Bestätigungs-/Chat-Fallback-Pipeline wie
    bei getippten Nachrichten. Kein Fallback bei Transkriptions-Fehlern möglich (anders
    als beim Text-Parsing) — eigene Fehlermeldung dafür.
-3. **Vier Bequemlichkeits-Features** — Übungsnamen-Autocomplete im Eingabefeld,
+4. **Vier Bequemlichkeits-Features** — Übungsnamen-Autocomplete im Eingabefeld,
    7-Tage-Delta am Gewicht-Chart, „Zuletzt"-Chips zum Wiederholen des letzten Satzes
    je Übung, Telegram-Inline-Tastaturen für `/verlauf` und `/chart` ohne Argument.
-4. **Dashboard-Routen gegen transiente DB-Fehler abgesichert** — bei einem kurzen
+5. **Dashboard-Routen gegen transiente DB-Fehler abgesichert** — bei einem kurzen
    Supabase-Netzwerk-Hänger zeigen `/dashboard*`-Routen jetzt eine freundliche
    Meldung statt der rohen FastAPI-500-Seite (analog zum bestehenden Muster im
    Webhook).
-5. **Python-Version-Pinning repariert** — Render beachtet `runtime.txt` nicht mehr
+6. **Python-Version-Pinning repariert** — Render beachtet `runtime.txt` nicht mehr
    (Versions-Auswahl umgestellt auf `PYTHON_VERSION`-Env-Var/`.python-version`);
    Build lief dadurch unbemerkt wieder auf Python 3.14. Behoben durch
    `.python-version` mit `3.12.10`.
-6. **Editierbarer Wochenplan** — neuer „Plan"-Tab im Dashboard, Wochenplan-Text liegt
+7. **Editierbarer Wochenplan** — neuer „Plan"-Tab im Dashboard, Wochenplan-Text liegt
    als Override in `bot_state` (JSON) statt nur in `app/config.py`, Fallback pro Tag
    auf die Config-Defaults, wirkt sich auf Erinnerung/Heute-Tab/Chat-Kontext aus.
-7. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
+8. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
    Paare (global in `bot_state`, kein Schema-Change), automatischer Reset nach 60 Min
    Inaktivität.
-8. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
+9. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
    privaten Notizen/echte URLs mehr), `CONTRIBUTING.md`, README mit Feature-Übersicht
    und Beispiel-Chart, GitHub-Beschreibung + Topics gesetzt, Repo ist jetzt **public**.
-9. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
+10. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
    Programmlänge, Zielgewicht, Deload-Fenster, Erinnerungs-Zeiten.
-10. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
+11. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
     (Heute/Fortschritt/Verlauf), minimalistischer Dark-Look, neue Chart-Palette.
-11. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
-12. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
+12. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
+13. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
     auch direkt im Browser möglich (nicht mehr nur per Telegram).
-13. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
+14. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
     werden über Groq mit Plan- und Verlaufskontext beantwortet.
-14. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
-15. **Dashboard: Wochenkalender mit echten Wochentagen**
-16. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
-17. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
-18. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
+15. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
+16. **Dashboard: Wochenkalender mit echten Wochentagen**
+17. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
+18. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
+19. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
 
 ---
 
