@@ -44,21 +44,41 @@ _CHART_ONERROR = (
 _STYLE = """
 <style>
   :root {
-    --ground: #0e0f11; --surface: #15171a; --surface-2: #1b1e22;
+    --ground: #0c0d10; --surface: #15171a; --surface-2: #1b1e22;
     --line: rgba(255,255,255,.07); --line-strong: rgba(255,255,255,.13);
     --ink: #f3f4f1; --ink-dim: #a5a7a1; --ink-mute: #6d6f6a;
     --accent: #d8a657; --accent-soft: rgba(216,166,87,.14); --good: #6fa77c;
-    --radius: 14px; --nav-h: 64px;
+    --radius: 16px; --card-radius: 18px; --nav-h: 64px;
+    --glass-bg: rgba(255,255,255,.025); --glass-line: rgba(255,255,255,.06);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--ground); }
+  body { position: relative; }
+  /* Statische Ambiente-Tiefe: auf einem fixed ::before statt background-attachment:fixed
+     (das ruckelt beim Scrollen auf iOS), rein statische Farbverläufe, keine Animation. */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(120% 60% at 85% -10%, rgba(216,166,87,.07), transparent 60%),
+      radial-gradient(100% 50% at 0% 110%, rgba(87,124,216,.05), transparent 55%);
+  }
   .app {
-    max-width: 460px; margin: 0 auto; min-height: 100vh; background: var(--ground);
+    max-width: 460px; margin: 0 auto; min-height: 100vh; background: transparent;
     color: var(--ink); font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
-    padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 12px); position: relative;
+    padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 28px); position: relative;
   }
-  .view { padding: 1.5rem 1.35rem 0; }
+
+  .app-header {
+    position: sticky; top: 0; z-index: 9; display: flex; align-items: center;
+    justify-content: space-between; gap: 1rem;
+    padding: max(env(safe-area-inset-top), 14px) 1.35rem .85rem;
+    background: rgba(12,13,16,.75); backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .app-header .hdr-date { font-size: .72rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .view { padding: 1.4rem 1.35rem 0; }
   .view[hidden] { display: none; }
   .micro-label { font-size: .68rem; text-transform: uppercase; letter-spacing: .16em; color: var(--ink-mute); font-weight: 600; }
   .view-head { margin-bottom: .3rem; }
@@ -69,8 +89,8 @@ _STYLE = """
     font-size: .72rem; color: var(--accent); letter-spacing: .08em; font-variant-numeric: tabular-nums;
     border: 1px solid var(--line-strong); padding: .28rem .55rem; border-radius: 999px; white-space: nowrap;
   }
-  .hero { font-size: clamp(2rem, 8.5vw, 2.5rem); font-weight: 300; line-height: 1.05; letter-spacing: -.025em; margin: 0; text-wrap: balance; }
-  .hero-sub { margin: .5rem 0 0; color: var(--ink-dim); font-size: 1rem; }
+  .hero { font-size: clamp(2.15rem, 9vw, 2.7rem); font-weight: 300; line-height: 1.05; letter-spacing: -.025em; margin: 0; text-wrap: balance; }
+  .hero-sub { margin: .55rem 0 0; color: var(--ink-dim); font-size: 1.02rem; }
   .note {
     margin: 1.1rem 0 0; padding: .6rem .85rem; border-left: 2px solid var(--accent);
     background: var(--accent-soft); border-radius: 0 8px 8px 0; font-size: .82rem; color: var(--ink-dim);
@@ -100,7 +120,7 @@ _STYLE = """
   .flash { margin: .8rem 0 0; padding: .7rem .9rem; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: .85rem; border: 1px solid rgba(216,166,87,.22); }
   .flash-float {
     position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 14px);
+    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 26px);
     z-index: 11; margin: 0; max-width: min(420px, calc(100vw - 2rem));
     background: #221d12; box-shadow: 0 6px 24px rgba(0,0,0,.45); white-space: pre-line;
   }
@@ -114,8 +134,16 @@ _STYLE = """
   .day.today .d-plan { color: var(--ink); }
   .day.today .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin: .45rem auto 0; }
 
-  .streak-card { display: flex; align-items: center; gap: 1rem; margin: 1.4rem 0 0; }
-  .streak-flame { width: 38px; height: 38px; flex: 0 0 auto; }
+  .streak-card {
+    display: flex; align-items: center; gap: 1.1rem; margin: 1.4rem 0 0;
+    background: var(--glass-bg); border: 1px solid var(--glass-line); border-radius: var(--card-radius);
+    padding: 1rem 1.1rem;
+  }
+  .ring-wrap { position: relative; width: 96px; height: 96px; flex: 0 0 auto; display: grid; place-items: center; }
+  .ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-track { fill: none; stroke: rgba(255,255,255,.06); stroke-width: 8; }
+  .ring-progress { fill: none; stroke: url(#ember-grad); stroke-width: 8; stroke-linecap: round; }
+  .ring-wrap .streak-flame { position: absolute; width: 28px; height: 28px; }
   .streak-flame.is-cold { filter: grayscale(1); opacity: .4; }
   .streak-text .s-days {
     font-size: clamp(1.4rem, 6vw, 1.7rem); font-weight: 300; letter-spacing: -.02em;
@@ -136,7 +164,11 @@ _STYLE = """
   .log-row .l-detail.done, .activity .a-detail.done { color: var(--good); }
   .empty-line { color: var(--ink-mute); font-size: .88rem; margin: 0; }
 
-  .figures { display: grid; grid-template-columns: repeat(3, 1fr); margin: 1rem 0 .4rem; }
+  .figures {
+    display: grid; grid-template-columns: repeat(3, 1fr); margin: 1rem 0 .4rem;
+    background: var(--glass-bg); border: 1px solid var(--glass-line); border-radius: var(--card-radius);
+    padding: 1rem 1.1rem;
+  }
   .figure { padding: .2rem 0; position: relative; }
   .figure + .figure { padding-left: 1rem; }
   .figure + .figure::before { content: ""; position: absolute; left: 0; top: .3rem; bottom: .3rem; width: 1px; background: var(--line); }
@@ -144,21 +176,37 @@ _STYLE = """
   .figure .f-unit { font-size: .9rem; color: var(--ink-dim); font-weight: 300; }
   .figure .f-label { font-size: .66rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-mute); margin-top: .55rem; }
 
-  .chart-block { margin-top: 2rem; padding-top: 1.6rem; border-top: 1px solid var(--line); }
+  .chart-block {
+    margin-top: 1.7rem; padding: 1.1rem 1.1rem 1.3rem;
+    background: var(--glass-bg); border: 1px solid var(--glass-line); border-radius: var(--card-radius);
+    position: relative; overflow: hidden;
+  }
+  /* Helle Haarlinie oben für den "Glas"-Eindruck, rein statisch. */
+  .chart-block::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);
+  }
   .chart-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: .2rem; }
   .chart-head h2 { font-size: 1.05rem; font-weight: 500; margin: 0; letter-spacing: -.01em; }
   .chart-cap { font-size: .74rem; color: var(--ink-mute); margin: .3rem 0 0; }
   img.chart { width: 100%; display: block; border-radius: 10px; margin-top: .7rem; }
 
   .section-label { display: block; margin: 2.2rem 0 .2rem; }
-  .chart-grid { display: grid; gap: 1rem; margin-top: .9rem; }
+  .chart-grid { display: grid; gap: .9rem; margin-top: .9rem; }
+  .mini-card {
+    background: var(--glass-bg); border: 1px solid var(--glass-line); border-radius: 16px; padding: .9rem;
+  }
   .mini-card h3 { font-size: .9rem; font-weight: 500; color: var(--ink-dim); margin: 0 0 .1rem; }
   .mini-card h3 .muted { color: var(--ink-mute); font-weight: 400; }
   .count-meta { font-size: .88rem; color: var(--ink-dim); margin: .35rem 0 0; }
   .count-meta .count-num { color: var(--ink); font-variant-numeric: tabular-nums; }
   .untracked-line { font-size: .82rem; color: var(--ink-mute); margin: 1rem 0 0; line-height: 1.5; }
 
-  .heatmap-wrap { margin: 0 0 1.7rem; overflow-x: auto; }
+  .heatmap-wrap {
+    margin: 0 0 1.7rem; overflow-x: auto;
+    background: var(--glass-bg); border: 1px solid var(--glass-line); border-radius: var(--card-radius);
+    padding: 1rem 1rem 1.1rem;
+  }
   .heatmap-inner { display: inline-block; min-width: 100%; }
   .heatmap-months { display: grid; grid-template-columns: repeat(26, 12px); gap: 3px; margin: 0 0 .3rem 22px; }
   .heatmap-months span { font-size: .6rem; color: var(--ink-mute); text-transform: uppercase; letter-spacing: .04em; }
@@ -169,13 +217,17 @@ _STYLE = """
     display: grid; grid-template-rows: repeat(7, 12px); grid-template-columns: repeat(26, 12px);
     grid-auto-flow: column; gap: 3px;
   }
-  .heatmap-cell { width: 12px; height: 12px; border-radius: 3px; background: rgba(255,255,255,.05); }
-  .heatmap-cell.trained { background: var(--accent); opacity: .82; }
+  .heatmap-cell { width: 12px; height: 12px; border-radius: 4px; background: rgba(255,255,255,.05); }
+  .heatmap-cell.trained { background: linear-gradient(155deg, #f0c078, #d8a657); opacity: .88; }
   .heatmap-cell.today { box-shadow: 0 0 0 1.5px var(--accent); }
   .heatmap-cell.future { visibility: hidden; }
 
-  .activity { list-style: none; margin: 1.2rem 0 0; padding: 0; }
+  .activity {
+    list-style: none; margin: 1.2rem 0 0; padding: .2rem 1rem;
+    background: var(--glass-bg); border: 1px solid var(--glass-line); border-radius: var(--card-radius);
+  }
   .activity li { display: grid; grid-template-columns: auto 1fr auto auto; align-items: baseline; gap: .9rem; padding: .8rem 0; border-bottom: 1px solid var(--line); }
+  .activity li:last-child { border-bottom: none; }
   .activity .a-date { font-size: .78rem; color: var(--ink-mute); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .activity .a-name { font-size: .95rem; color: var(--ink); }
   .activity .a-detail { font-size: .85rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
@@ -196,7 +248,10 @@ _STYLE = """
   .export-line { margin: 1.4rem 0 0; text-align: center; }
   a.undo { text-decoration: none; display: inline-block; }
 
-  .plan-row { margin: 0 0 1.3rem; }
+  .plan-row {
+    margin: 0 0 .9rem; background: var(--glass-bg); border: 1px solid var(--glass-line);
+    border-radius: var(--card-radius); padding: .9rem .9rem 1rem;
+  }
   .plan-day { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-mute); margin-bottom: .5rem; }
   .plan-row input {
     display: block; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
@@ -227,7 +282,10 @@ _STYLE = """
     background: var(--accent-soft); color: var(--accent);
     padding: .22rem .5rem; border-radius: 999px; white-space: nowrap;
   }
-  .exercise-row { margin: 0; padding: .2rem 0 1.2rem; }
+  .exercise-row {
+    margin: 0 0 .9rem; padding: .8rem .8rem 1.1rem; background: var(--glass-bg);
+    border: 1px solid var(--glass-line); border-radius: var(--card-radius);
+  }
   .exercise-row input[type="text"], .exercise-row select {
     display: block; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
     padding: .7rem .85rem; color: var(--ink); font-size: .9rem; font-family: inherit; margin-bottom: .5rem;
@@ -246,15 +304,23 @@ _STYLE = """
   .exercise-add .plan-day { display: block; margin-bottom: .7rem; }
 
   .tabbar {
-    position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
-    padding-bottom: env(safe-area-inset-bottom, 0px); background: rgba(14,15,17,.82); backdrop-filter: blur(14px);
-    border-top: 1px solid var(--line); z-index: 10;
+    position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    max-width: 436px; margin: 0 auto; height: var(--nav-h);
+    background: rgba(21,23,26,.72); backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.08); border-radius: 24px; z-index: 10;
   }
-  .tabbar-inner { max-width: 460px; margin: 0 auto; height: var(--nav-h); display: grid; grid-template-columns: repeat(5, 1fr); }
-  .tab { background: none; border: none; cursor: pointer; color: var(--ink-mute); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .25rem; font-family: inherit; font-size: .68rem; }
+  .tabbar-inner { height: 100%; display: grid; grid-template-columns: repeat(5, 1fr); }
+  .tab { background: none; border: none; cursor: pointer; color: var(--ink-mute); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .25rem; font-family: inherit; font-size: .68rem; position: relative; }
   .tab svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.6; }
   .tab.active { color: var(--accent); }
+  /* Statischer Glow-Punkt unter dem aktiven Icon — kein box-shadow-Keyframe, nur einmalig gesetzt. */
+  .tab.active::after {
+    content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 4px; height: 4px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 6px rgba(216,166,87,.85);
+  }
   .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 8px; }
+  .tab:active { transform: scale(.98); }
 
   form.is-loading button[type="submit"] { opacity: .55; pointer-events: none; }
   form.is-loading button[type="submit"]::after {
@@ -268,6 +334,20 @@ _STYLE = """
     @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     form.is-loading button[type="submit"]::after { animation: spin .7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Ring-Füllstand: animiert von leer zum Inline-Style-Zielwert des Elements — der
+       Keyframe definiert bewusst nur "from" (kein var() im Keyframe, das ist in
+       älteren Safari-Versionen unzuverlässig; ohne fill-mode gilt danach der
+       Inline-Style). Rein geometrisch, kein Filter/Shadow/Background. */
+    .ring-progress { animation: ring-fill .9s ease-out; }
+    @keyframes ring-fill {
+      from { stroke-dashoffset: 263.9px; }
+    }
+
+    .view:not([hidden]) .activity li, .view:not([hidden]) .log-row {
+      animation: item-fade .32s ease both; animation-delay: calc(var(--i, 0) * 30ms);
+    }
+    @keyframes item-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
     .streak-flame:not(.is-cold) .flame-outer { animation: flicker-outer .9s ease-in-out infinite alternate; }
     .streak-flame:not(.is-cold) .flame-inner { animation: flicker-inner 1.3s ease-in-out infinite alternate; }
@@ -379,6 +459,24 @@ def _repeat_chips(last_sets: list[dict], session_only_exercises: set[str] | None
     )
 
 
+def _app_header(today: date | None) -> str:
+    """Sticky Kopfzeile über allen Views — löst das iOS-Safe-Area-Problem (Statusleiste
+    verdeckt sonst den Seitenanfang) und zeigt Marke + kompakte Datumszeile."""
+    date_line = ""
+    if today is not None:
+        date_line = (
+            '<div class="hdr-date">'
+            f"{WEEKDAY_ABBR[today.weekday()]} · {today.day}. {MONTH_ABBR[today.month - 1]}"
+            "</div>"
+        )
+    return (
+        '<header class="app-header">'
+        '<span class="micro-label">Trainings-Tracker</span>'
+        f"{date_line}"
+        "</header>"
+    )
+
+
 def _exercise_datalist(exercise_aliases: dict[str, list[str]]) -> str:
     options = "".join(f'<option value="{_attr(name)}">' for name in sorted(exercise_aliases))
     return f'<datalist id="exercise-names">{options}</datalist>'
@@ -393,9 +491,31 @@ _FLAME_SVG = """<svg class="streak-flame{cold_cls}" viewBox="0 0 32 40" aria-hid
 </svg>"""
 
 
+_RING_RADIUS = 42
+_RING_CIRCUMFERENCE = 263.9  # 2 * pi * 42, gerundet — muss zum CSS-Keyframe passen
+
+
+def _activity_ring(week_training_days: int, weekly_target: int) -> str:
+    """Apple-Watch-artiger Fortschrittsring: Bogen = Trainingstage / Wochenziel (bei >100% voll)."""
+    fraction = min(week_training_days / weekly_target, 1.0) if weekly_target else 0.0
+    offset = round(_RING_CIRCUMFERENCE * (1 - fraction), 1)
+    return (
+        '<svg class="ring" viewBox="0 0 100 100" aria-hidden="true">'
+        '<defs><linearGradient id="ember-grad" x1="0%" y1="0%" x2="100%" y2="100%">'
+        '<stop offset="0%" stop-color="#d8a657"/><stop offset="100%" stop-color="#f0c078"/>'
+        "</linearGradient></defs>"
+        '<circle class="ring-track" cx="50" cy="50" r="42"/>'
+        f'<circle class="ring-progress" cx="50" cy="50" r="42" '
+        f'stroke-dasharray="{_RING_CIRCUMFERENCE}" '
+        f'style="stroke-dashoffset:{offset}px"/>'
+        "</svg>"
+    )
+
+
 def _streak_card(week_training_days: int, streak_weeks: int) -> str:
     cold = streak_weeks == 0 and week_training_days == 0
     flame = _FLAME_SVG.format(cold_cls=" is-cold" if cold else "")
+    ring = _activity_ring(week_training_days, WEEKLY_TRAINING_TARGET)
     if streak_weeks == 0:
         streak_text = "Noch keine Serie — diese Woche zählt!"
     elif streak_weeks == 1:
@@ -404,7 +524,7 @@ def _streak_card(week_training_days: int, streak_weeks: int) -> str:
         streak_text = f"{streak_weeks} Wochen in Folge"
     return (
         '<div class="streak-card">'
-        f"{flame}"
+        f'<div class="ring-wrap">{ring}{flame}</div>'
         '<div class="streak-text">'
         f'<div class="s-days">{week_training_days} / {WEEKLY_TRAINING_TARGET} Tage diese Woche</div>'
         f'<div class="s-streak">{_t(streak_text)}</div>'
@@ -484,11 +604,12 @@ def _heute_view(
 
         todays = [e for e in recent if e.get("logged_at", "")[:10] == today.isoformat()]
         rows = []
-        for e in todays:
+        for i, e in enumerate(todays):
             detail, done = _entry_detail(e, session_only_exercises)
             cls = "l-detail done" if done else "l-detail"
+            style = f' style="--i:{i}"' if i < 15 else ""
             rows.append(
-                f'<div class="log-row"><span class="l-name">{_t(_entry_name(e))}</span>'
+                f'<div class="log-row"{style}><span class="l-name">{_t(_entry_name(e))}</span>'
                 f'<span class="{cls}">{_t(detail)}</span></div>'
             )
         body = "".join(rows) if rows else '<p class="empty-line">Heute noch nichts geloggt.</p>'
@@ -700,11 +821,12 @@ def _verlauf_view(
 ) -> str:
     heatmap_html = _heatmap(heatmap_dates, today) if heatmap_dates and today is not None else ""
     items = []
-    for e in recent:
+    for i, e in enumerate(recent):
         detail, done = _entry_detail(e, session_only_exercises)
         cls = "a-detail done" if done else "a-detail"
+        style = f' style="--i:{i}"' if i < 15 else ""
         items.append(
-            f'<li><span class="a-date">{_short_date(e["logged_at"])}</span>'
+            f'<li{style}><span class="a-date">{_short_date(e["logged_at"])}</span>'
             f'<span class="a-name">{_t(_entry_name(e))}</span>'
             f'<span class="{cls}">{_t(detail)}</span>'
             f"{_entry_edit_panel(e, encoded_token)}</li>"
@@ -1007,6 +1129,7 @@ def render_dashboard_html(
         encoded_token, exercise_aliases, cardio_exercises, session_only_exercises, plan_sections,
         view == "uebungen",
     )
+    header = _app_header(today)
 
     # Flash als schwebender Toast über der Tab-Leiste statt im Heute-View:
     # so ist die Bestätigung auch nach Speichern im Verlauf/Plan/Übungen-Tab sichtbar.
@@ -1022,11 +1145,12 @@ def render_dashboard_html(
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#0e0f11">
+  <meta name="theme-color" content="#0c0d10">
   {_STYLE}
 </head>
 <body>
   <div class="app">
+    {header}
     {heute}
     {fortschritt}
     {verlauf}
