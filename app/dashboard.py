@@ -173,7 +173,23 @@ _STYLE = """
   .plan-save:active { transform: scale(.99); }
   .plan-reset { margin-top: 1rem; text-align: center; }
 
-  .exercise-row { margin: 0 0 1.5rem; padding-bottom: 1.3rem; border-bottom: 1px solid var(--line); }
+  .exercise-item { border-bottom: 1px solid var(--line); }
+  .exercise-item summary {
+    display: flex; align-items: center; gap: .8rem; padding: .9rem 0;
+    cursor: pointer; list-style: none;
+  }
+  .exercise-item summary::-webkit-details-marker { display: none; }
+  .exercise-item summary::after { content: "›"; color: var(--ink-mute); margin-left: .2rem; }
+  .exercise-item[open] summary::after { content: "⌄"; }
+  .exercise-item summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+  .ei-name { font-size: .95rem; }
+  .ei-tags { display: flex; gap: .4rem; margin-left: auto; }
+  .pill {
+    font-size: .64rem; text-transform: uppercase; letter-spacing: .06em;
+    background: var(--accent-soft); color: var(--accent);
+    padding: .22rem .5rem; border-radius: 999px; white-space: nowrap;
+  }
+  .exercise-row { margin: 0; padding: .2rem 0 1.2rem; }
   .exercise-row input[type="text"], .exercise-row select {
     display: block; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
     padding: .7rem .85rem; color: var(--ink); font-size: .9rem; font-family: inherit; margin-bottom: .5rem;
@@ -275,7 +291,10 @@ def _short_date(iso: str) -> str:
 
 def _chart_img(exercise: str, encoded_token: str, alt: str) -> str:
     src = f"/dashboard/chart.png?exercise={quote(exercise)}&token={encoded_token}"
-    return f'<img class="chart" src="{src}" alt="{_t(alt)}" onerror="{_CHART_ONERROR}">'
+    return (
+        f'<img class="chart" src="{src}" alt="{_t(alt)}" loading="lazy" decoding="async" '
+        f'onerror="{_CHART_ONERROR}">'
+    )
 
 
 def _hero_parts(plan: str) -> tuple[str, str]:
@@ -621,28 +640,42 @@ def _uebungen_view(
         aliases_text = ", ".join(exercise_aliases[name])
         cardio_checked = " checked" if name in cardio_exercises else ""
         session_checked = " checked" if name in session_only_exercises else ""
+        tags = []
+        section = section_by_name.get(name, "")
+        if section:
+            tags.append(f'<span class="pill">{_t(section)}</span>')
+        if name in session_only_exercises:
+            tags.append('<span class="pill">Session</span>')
+        elif name in cardio_exercises:
+            tags.append('<span class="pill">Cardio</span>')
         rows.append(
+            '<details class="exercise-item">'
+            f'<summary><span class="ei-name">{_t(name)}</span>'
+            f'<span class="ei-tags">{"".join(tags)}</span></summary>'
             '<div class="exercise-row">'
             f'<form method="post" data-ajax action="/dashboard/exercises/update?token={encoded_token}">'
             f'<input type="hidden" name="original_name" value="{_attr(name)}">'
             f'<input type="text" name="name" value="{_attr(name)}" aria-label="Name" required>'
             f'<input type="text" name="aliases" value="{_attr(aliases_text)}" '
             'aria-label="Aliase (kommagetrennt)" placeholder="Aliase, kommagetrennt">'
-            f'{_section_select("section", section_by_name.get(name, ""))}'
+            f'{_section_select("section", section)}'
             f'<label><input type="checkbox" name="is_cardio"{cardio_checked}> Cardio</label>'
             f'<label><input type="checkbox" name="is_session_only"{session_checked}> Ohne Zahlen (Session)</label>'
             '<button type="submit" class="exercise-save">Speichern</button>'
             "</form>"
             f'<div class="exercise-delete-form"><form method="post" data-ajax '
+            f'data-confirm="Übung „{_attr(name)}“ wirklich löschen? Verlaufsdaten bleiben erhalten." '
             f'action="/dashboard/exercises/delete?token={encoded_token}">'
             f'<input type="hidden" name="name" value="{_attr(name)}">'
             '<button type="submit" class="undo">🗑 Löschen</button>'
             "</form></div>"
-            "</div>"
+            "</div></details>"
         )
 
     add_form = (
-        '<div class="exercise-row exercise-add"><span class="plan-day">Neue Übung</span>'
+        '<details class="exercise-item exercise-add">'
+        '<summary><span class="ei-name">＋ Neue Übung</span></summary>'
+        '<div class="exercise-row">'
         f'<form method="post" data-ajax action="/dashboard/exercises/add?token={encoded_token}">'
         '<input type="text" name="name" aria-label="Name" placeholder="Name" required>'
         '<input type="text" name="aliases" aria-label="Aliase (kommagetrennt)" '
@@ -651,7 +684,7 @@ def _uebungen_view(
         '<label><input type="checkbox" name="is_cardio"> Cardio</label>'
         '<label><input type="checkbox" name="is_session_only"> Ohne Zahlen (Session)</label>'
         '<button type="submit" class="exercise-save">Hinzufügen</button>'
-        "</form></div>"
+        "</form></div></details>"
     )
 
     hidden_attr = "" if active else " hidden"

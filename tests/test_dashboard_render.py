@@ -222,6 +222,29 @@ def test_uebungen_tab_vorbelegte_sektion_und_flags():
     assert 'name="is_cardio" checked' in html
 
 
+def test_uebungen_tab_als_akkordeons_mit_pills_und_loesch_confirm():
+    exercise_aliases = {"Bankdrücken": ["bankdrücken"], "Laufen": ["laufen"]}
+    html = render_dashboard_html(
+        [], "token", None, training_days=0,
+        exercise_aliases=exercise_aliases, cardio_exercises={"Laufen"},
+        session_only_exercises=set(), plan_sections=[("Tag A – Beine & Druck", ["Bankdrücken"])],
+    )
+    assert html.count('<details class="exercise-item">') == 2
+    assert '<span class="pill">Cardio</span>' in html
+    assert '<span class="pill">Tag A – Beine &amp; Druck</span>' in html
+    assert 'data-confirm="Übung „Bankdrücken“ wirklich löschen?' in html
+    assert "＋ Neue Übung" in html
+
+
+def test_chart_bilder_laden_lazy():
+    summary = {"Kniebeuge": {"count": 2, "last": "2026-07-14T07:00:00"}}
+    html = render_dashboard_html(
+        [], "token", {"weight_kg": 83.4}, training_days=1, exercise_summary=summary
+    )
+    assert html.count('loading="lazy"') == html.count('<img class="chart"')
+    assert html.count('<img class="chart"') >= 2
+
+
 def test_plan_tab_zeigt_alle_wochentage_und_werte():
     plan_long = {d: f"Langform {d}" for d in range(7)}
     plan_short = {d: f"Kurz{d}" for d in range(7)}

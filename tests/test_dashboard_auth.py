@@ -67,6 +67,54 @@ def test_dashboard_chart_mit_token_aber_keine_daten_404(monkeypatch):
     assert r.status_code == 404
 
 
+_CHART_ENTRIES = [
+    {"logged_at": "2026-07-14T10:00:00", "sets": 3, "reps": 8, "weight_kg": 80},
+    {"logged_at": "2026-07-10T10:00:00", "sets": 3, "reps": 8, "weight_kg": 75},
+]
+
+
+def test_dashboard_chart_liefert_etag_und_cache_header(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.get_history", return_value=_CHART_ENTRIES), patch(
+        "app.main.render_progress_chart", return_value=b"png-bytes"
+    ):
+        r = client.get("/dashboard/chart.png?exercise=EtagTest&token=richtig")
+    assert r.status_code == 200
+    assert r.headers["etag"].startswith('W/"')
+    assert "must-revalidate" in r.headers["cache-control"]
+
+
+def test_dashboard_chart_304_bei_passendem_etag_ohne_neu_rendern(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.get_history", return_value=_CHART_ENTRIES), patch(
+        "app.main.render_progress_chart", return_value=b"png-bytes"
+    ) as render:
+        first = client.get("/dashboard/chart.png?exercise=Etag304&token=richtig")
+        etag = first.headers["etag"]
+        second = client.get(
+            "/dashboard/chart.png?exercise=Etag304&token=richtig",
+            headers={"If-None-Match": etag},
+        )
+    assert second.status_code == 304
+    assert render.call_count == 1
+    assert second.headers["etag"] == etag
+
+
+def test_dashboard_chart_neue_daten_ergeben_neuen_etag(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    newer = [{"logged_at": "2026-07-15T10:00:00", "sets": 3, "reps": 8, "weight_kg": 85}] + _CHART_ENTRIES
+    with patch("app.main.render_progress_chart", return_value=b"png-bytes"):
+        with patch("app.main.db.get_history", return_value=_CHART_ENTRIES):
+            first = client.get("/dashboard/chart.png?exercise=EtagNeu&token=richtig")
+        with patch("app.main.db.get_history", return_value=newer):
+            second = client.get(
+                "/dashboard/chart.png?exercise=EtagNeu&token=richtig",
+                headers={"If-None-Match": first.headers["etag"]},
+            )
+    assert second.status_code == 200
+    assert second.headers["etag"] != first.headers["etag"]
+
+
 def test_dashboard_chart_bei_db_fehler_503_statt_500(monkeypatch):
     monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
     with patch("app.main.db.get_history", side_effect=Exception("supabase down")):

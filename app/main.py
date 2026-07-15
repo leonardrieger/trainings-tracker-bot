@@ -1,6 +1,7 @@
 """FastAPI-App: Telegram-Webhook-Endpoint + Command-Routing."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -380,21 +381,44 @@ def dashboard(token: str = "", msg: str = "", view: str = "heute") -> HTMLRespon
         return _dashboard_error_page()
 
 
+# Matplotlib-Renders sind der teure Teil des Chart-Endpoints. Der ETag hängt nur an
+# den Daten (Anzahl + neuester Eintrag), sodass Browser-Revalidierung nach jedem
+# Seitenaufruf als billiger 304 beantwortet werden kann; das PNG selbst liegt
+# zusätzlich in einem kleinen In-Memory-Cache (Single-User, ~20 Übungen).
+_CHART_CACHE: dict[str, tuple[str, bytes]] = {}
+
+
 @app.get("/dashboard/chart.png")
-def dashboard_chart(exercise: str, token: str = "") -> Response:
+def dashboard_chart(request: Request, exercise: str, token: str = "") -> Response:
     if not _dashboard_authorized(token):
         return Response(status_code=401)
     try:
         user_id = _allowed_user_id()
-        if exercise.lower() in BODYWEIGHT_ALIASES:
+        is_bodyweight = exercise.lower() in BODYWEIGHT_ALIASES
+        if is_bodyweight:
             entries = db.get_body_weight_history(user_id, limit=200)
-            image = render_progress_chart("Körpergewicht", entries, target_range=BODYWEIGHT_TARGET_RANGE)
         else:
             entries = db.get_history(user_id, exercise, limit=200)
+
+        newest = entries[0]["logged_at"] if entries else "leer"
+        fingerprint = f"{exercise}|{len(entries)}|{newest}"
+        etag = f'W/"{hashlib.md5(fingerprint.encode()).hexdigest()}"'
+        headers = {"ETag": etag, "Cache-Control": "private, max-age=0, must-revalidate"}
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=headers)
+
+        cached = _CHART_CACHE.get(exercise)
+        if cached is not None and cached[0] == etag:
+            return Response(content=cached[1], media_type="image/png", headers=headers)
+
+        if is_bodyweight:
+            image = render_progress_chart("Körpergewicht", entries, target_range=BODYWEIGHT_TARGET_RANGE)
+        else:
             image = render_progress_chart(exercise, entries)
         if image is None:
             return Response(status_code=404)
-        return Response(content=image, media_type="image/png")
+        _CHART_CACHE[exercise] = (etag, image)
+        return Response(content=image, media_type="image/png", headers=headers)
     except Exception:
         # Dashboard hat für kaputte Chart-Bilder bereits einen onerror-Textfallback,
         # ein sauberer 503 reicht hier also aus statt einer rohen 500-Seite.
