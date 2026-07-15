@@ -1,6 +1,6 @@
 # Trainings-Tracker Telegram-Bot — Projektzusammenfassung
 
-_Stand: 2026-07-15 (Kalender-Heatmap + Streak-Karte, README-Überarbeitung mit Banner/Screenshots, PR-Erkennung,
+_Stand: 2026-07-15 (UI-Redesign „Ember", Kalender-Heatmap + Streak-Karte, README-Überarbeitung mit Banner/Screenshots, PR-Erkennung,
 Übungsverwaltung im Dashboard, Sprachnachrichten-Logging, editierbarer Wochenplan,
 Bequemlichkeits-Features, Python-Version-Fix)_
 
@@ -114,16 +114,21 @@ Gewicht, nicht Volumen).
 ## Dashboard-Features
 
 - **App-artige Ansicht:** fünf Tabs (Heute / Fortschritt / Verlauf / Plan / Übungen)
-  mit fester unterer Tab-Leiste statt einer langen Scroll-Seite. Minimalistischer,
-  ruhiger Dark-Look (warmer Amber-Akzent sehr sparsam, dünne große Zahlen mit
-  tabular-nums, Haarlinien statt schwerer Karten). Aktiver Tab wird server-seitig über
-  `?view=` gesteuert (z.B. nach einem Redirect gezielt auf einem Tab landen).
+  mit schwebender Pill-Tab-Bar statt einer langen Scroll-Seite. Dark-Look „Ember":
+  warmer Amber-Akzent, dünne große Zahlen mit tabular-nums, Glas-Karten
+  (rgba-Flächen + Haarlinien-Rand) über einem statischen Ambiente-Hintergrund aus
+  zwei Radial-Glows. Sticky App-Header mit `max(env(safe-area-inset-top), 14px)` —
+  auf dem iPhone (Statusleiste/Dynamic Island) wird kein Inhalt mehr verdeckt.
+  Aktiver Tab wird server-seitig über `?view=` gesteuert (z.B. nach einem Redirect
+  gezielt auf einem Tab landen).
 - **Heute:** Tagesplan + Wochennummer groß oben, „Zuletzt"-Chips (letzter geloggter
   Satz je Übung, Antippen füllt das Eingabefeld vor statt neu zu tippen),
   Schnell-Eingabe mit Übungsnamen-Autocomplete (`<datalist>`), Wochenstreifen
-  (heutiger Tag hervorgehoben, getrackte Tage mit ✓), Streak-Karte (animierte
-  SVG-Flamme, „X / 6 Tage diese Woche" + Wochen-Serie; Flamme grau/erloschen ohne
-  Aktivität), heute geloggte Einträge.
+  (heutiger Tag hervorgehoben, getrackte Tage mit ✓), Activity-Ring
+  (Apple-Watch-artig: Bogen = Trainingstage/Wochenziel mit Amber-Gradient und
+  CSS-Füllanimation, animierte SVG-Flamme im Zentrum — grau/erloschen ohne
+  Aktivität — daneben „X / 6 Tage diese Woche" + Wochen-Serie), heute geloggte
+  Einträge.
 - **Fortschritt:** Kennzahlen (Gewicht/Woche/Trainingstage), Körpergewichts-Chart mit
   Zielband + 7-Tage-Delta (z.B. „↓ 1,6 kg"), Übungs-Charts gruppiert nach
   Tag A/B/C/Kickboxen/Ausdauer.
@@ -219,7 +224,16 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 
 ## Bereits umgesetzte Features (chronologisch, neueste zuerst)
 
-1. **Kalender-Heatmap + Streak-Karte mit Flammenanimation** — Verlauf-Tab zeigt
+1. **UI-Redesign „Ember"** — sticky App-Header mit Safe-Area-Padding (iPhone-
+   Statusleiste verdeckte vorher Inhalt), Streak-Karte zum Apple-Watch-artigen
+   Activity-Ring umgebaut (SVG-Bogen = Trainingstage/Wochenziel, Amber-Gradient,
+   Flamme im Zentrum, Füllanimation rein per CSS über `stroke-dashoffset`; der
+   Keyframe definiert bewusst nur `from` — `var()` in Keyframes ist in älteren
+   Safari-Versionen unzuverlässig), statischer Ambiente-Hintergrund, Glas-Karten,
+   schwebende Pill-Tab-Bar, gestaffelte Einblend-Animationen (nur
+   transform/opacity, hinter `prefers-reduced-motion`). Markup der Tests
+   unverändert — alle 263 weiterhin grün, nur `app/dashboard.py` angefasst.
+2. **Kalender-Heatmap + Streak-Karte mit Flammenanimation** — Verlauf-Tab zeigt
    eine 26-Wochen-Heatmap der Trainingstage (binär trainiert/nicht, ein einziger
    zusätzlicher DB-Call, der auch die Streak-Berechnung speist); Heute-Tab zeigt
    unter dem Wochenstreifen eine Streak-Karte mit animierter SVG-Flamme
@@ -227,7 +241,7 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
    ein animierter `drop-shadow`-Filter würde pro Frame neu rastern). Neue reine
    Logik `weekly_day_counts`/`week_streak` in `reminders.py` (laufende Woche bricht
    die Serie nicht, zählt ab Zielerreichung mit), 13 neue Tests (263 gesamt).
-2. **README-Überarbeitung (Banner, Badges, Screenshots)** — SVG-Banner im
+3. **README-Überarbeitung (Banner, Badges, Screenshots)** — SVG-Banner im
    Dashboard-Look (dunkler Grund, Amber-Akzent, abstrakte Fortschrittslinie,
    `docs/banner.svg`) ersetzt den nackten Projekttitel; Badges für CI-Status,
    Python-Version, PWA und Lizenz direkt darunter. Neue Screenshot-Galerie zeigt
@@ -237,52 +251,52 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
    `db.*`-Funktionen gemockt, kein Zugriff auf die echte Supabase-DB), per
    headless Edge (`msedge --headless=new --screenshot=...`) abfotografiert.
    Ersetzt das alte einzelne Beispiel-Chart-Bild.
-3. **PR-Erkennung + Übungsverwaltung im Dashboard** — Bot meldet „🎉 Neuer Rekord!" bei
+4. **PR-Erkennung + Übungsverwaltung im Dashboard** — Bot meldet „🎉 Neuer Rekord!" bei
    neuem Bestgewicht pro Übung. Neuer „Übungen"-Tab: Übungen/Aliase/Tag-Zuordnung/
    Cardio-Flags voll verwaltbar statt nur per Code-Deploy in `app/exercises.py` —
    neue `exercises`-Tabelle (Migration ausgeführt), Seed-bei-erstem-Schreiben
    verhindert, dass ein einzelner Edit alle anderen Übungen unsichtbar macht,
    Umbenennung kaskadiert auf `workout_logs`.
-4. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
+5. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
    Tippen. Transkription via Groq Whisper (kostenlos), rohes Transkript kommt immer
    zuerst als Echo zurück (Transparenz bei möglichen Fehltranskriptionen deutscher
    Fachbegriffe), danach dieselbe Erkennungs-/Bestätigungs-/Chat-Fallback-Pipeline wie
    bei getippten Nachrichten. Kein Fallback bei Transkriptions-Fehlern möglich (anders
    als beim Text-Parsing) — eigene Fehlermeldung dafür.
-5. **Vier Bequemlichkeits-Features** — Übungsnamen-Autocomplete im Eingabefeld,
+6. **Vier Bequemlichkeits-Features** — Übungsnamen-Autocomplete im Eingabefeld,
    7-Tage-Delta am Gewicht-Chart, „Zuletzt"-Chips zum Wiederholen des letzten Satzes
    je Übung, Telegram-Inline-Tastaturen für `/verlauf` und `/chart` ohne Argument.
-6. **Dashboard-Routen gegen transiente DB-Fehler abgesichert** — bei einem kurzen
+7. **Dashboard-Routen gegen transiente DB-Fehler abgesichert** — bei einem kurzen
    Supabase-Netzwerk-Hänger zeigen `/dashboard*`-Routen jetzt eine freundliche
    Meldung statt der rohen FastAPI-500-Seite (analog zum bestehenden Muster im
    Webhook).
-7. **Python-Version-Pinning repariert** — Render beachtet `runtime.txt` nicht mehr
+8. **Python-Version-Pinning repariert** — Render beachtet `runtime.txt` nicht mehr
    (Versions-Auswahl umgestellt auf `PYTHON_VERSION`-Env-Var/`.python-version`);
    Build lief dadurch unbemerkt wieder auf Python 3.14. Behoben durch
    `.python-version` mit `3.12.10`.
-8. **Editierbarer Wochenplan** — neuer „Plan"-Tab im Dashboard, Wochenplan-Text liegt
+9. **Editierbarer Wochenplan** — neuer „Plan"-Tab im Dashboard, Wochenplan-Text liegt
    als Override in `bot_state` (JSON) statt nur in `app/config.py`, Fallback pro Tag
    auf die Config-Defaults, wirkt sich auf Erinnerung/Heute-Tab/Chat-Kontext aus.
-9. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
+10. **Multi-Turn-Chat-Gedächtnis** — der Chat merkt sich die letzten 3 Frage-Antwort-
    Paare (global in `bot_state`, kein Schema-Change), automatischer Reset nach 60 Min
    Inaktivität.
-10. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
+11. **Repo-Veröffentlichung vorbereitet** — MIT-`LICENSE`, bereinigte Docs (keine
    privaten Notizen/echte URLs mehr), `CONTRIBUTING.md`, README mit Feature-Übersicht
    und Beispiel-Chart, GitHub-Beschreibung + Topics gesetzt, Repo ist jetzt **public**.
-11. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
+12. **Persönliche Config ausgelagert** — `app/config.py` bündelt Wochenplan,
    Programmlänge, Zielgewicht, Deload-Fenster, Erinnerungs-Zeiten.
-12. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
+13. **Dashboard-Redesign** — komplett neue, app-artige Ansicht mit drei Tabs
     (Heute/Fortschritt/Verlauf), minimalistischer Dark-Look, neue Chart-Palette.
-13. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
-14. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
+14. **Fix: kaputte Chart-Bilder** bei Übungen ohne Gewicht (Metrik-Fallback).
+15. **PWA-Dashboard + Web-Eingabeformular** — installierbar auf dem Handy, Einträge
     auch direkt im Browser möglich (nicht mehr nur per Telegram).
-15. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
+16. **Telegram-LLM-Chat** (Basis-Version) — freie Fragen wie „Was steht heute an?"
     werden über Groq mit Plan- und Verlaufskontext beantwortet.
-16. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
-17. **Dashboard: Wochenkalender mit echten Wochentagen**
-18. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
-19. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
-20. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
+17. **Webhook-Absicherung, Fehlerbehandlung, `/undo`**
+18. **Dashboard: Wochenkalender mit echten Wochentagen**
+19. **Wochenzähler, Klimmzug-Phasen, Deload-Hinweis, Wochenrückblick**
+20. **Körpergewicht-Tracking, Erinnerungen, Dashboard-Grundgerüst, CI**
+21. **Initial commit** — Telegram-Bot fürs Trainings-Tracking (Regex-Parser, Supabase)
 
 ---
 
