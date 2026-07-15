@@ -432,6 +432,73 @@ def dashboard_undo(token: str = "") -> Response:
         return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG)
 
 
+def _parse_de_number(raw: str) -> float | None:
+    """Deutsche Dezimal-Eingabe ("82,5") -> float; leeres Feld -> None. ValueError bei Müll."""
+    text = raw.strip()
+    if not text:
+        return None
+    return float(text.replace(",", "."))
+
+
+_ENTRY_KINDS = {"workout", "bodyweight"}
+
+
+@app.post("/dashboard/entry/update")
+async def dashboard_entry_update(request: Request, token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    try:
+        form = await request.form()
+        kind = str(form.get("kind", ""))
+        if kind not in _ENTRY_KINDS:
+            return _dashboard_redirect(token, "⚠️ Ungültiger Eintrag.", view="verlauf")
+        try:
+            log_id = int(str(form.get("id", "")))
+            if kind == "bodyweight":
+                weight = _parse_de_number(str(form.get("weight_kg", "")))
+                if weight is None:
+                    return _dashboard_redirect(token, "⚠️ Gewicht darf nicht leer sein.", view="verlauf")
+                db.update_body_weight_log(_allowed_user_id(), log_id, weight)
+                name = "Körpergewicht"
+            else:
+                exercise = str(form.get("exercise", "")).strip()
+                if not exercise:
+                    return _dashboard_redirect(token, "⚠️ Übung darf nicht leer sein.", view="verlauf")
+                sets = _parse_de_number(str(form.get("sets", "")))
+                reps = _parse_de_number(str(form.get("reps", "")))
+                db.update_workout_log(
+                    _allowed_user_id(),
+                    log_id,
+                    exercise=exercise,
+                    sets=int(sets) if sets is not None else None,
+                    reps=int(reps) if reps is not None else None,
+                    weight_kg=_parse_de_number(str(form.get("weight_kg", ""))),
+                    duration_min=_parse_de_number(str(form.get("duration_min", ""))),
+                    distance_km=_parse_de_number(str(form.get("distance_km", ""))),
+                )
+                name = exercise
+        except ValueError:
+            return _dashboard_redirect(token, "⚠️ Ungültige Zahl.", view="verlauf")
+        return _dashboard_redirect(token, f'✅ Eintrag „{name}" aktualisiert.', view="verlauf")
+    except Exception:
+        logging.exception("Fehler beim Aktualisieren eines Log-Eintrags")
+        return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG, view="verlauf")
+
+
+@app.post("/dashboard/entry/delete")
+def dashboard_entry_delete(kind: str = Form(...), id: int = Form(...), token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    try:
+        if kind not in _ENTRY_KINDS:
+            return _dashboard_redirect(token, "⚠️ Ungültiger Eintrag.", view="verlauf")
+        deleted = db.delete_log_entry(_allowed_user_id(), kind, id)
+        return _dashboard_redirect(token, _undo_message(deleted), view="verlauf")
+    except Exception:
+        logging.exception("Fehler beim Löschen eines Log-Eintrags")
+        return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG, view="verlauf")
+
+
 @app.post("/dashboard/plan")
 async def dashboard_plan_save(request: Request, token: str = "") -> Response:
     if not _dashboard_authorized(token):

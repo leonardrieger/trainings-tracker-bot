@@ -390,6 +390,138 @@ def test_dashboard_exercises_delete_bei_db_fehler_redirect_statt_500(monkeypatch
     assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
 
 
+def test_dashboard_entry_update_ohne_token_401():
+    r = client.post("/dashboard/entry/update", data={"kind": "workout", "id": "1"})
+    assert r.status_code == 401
+
+
+def test_dashboard_entry_update_workout_mit_deutschen_zahlen(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_workout_log") as update:
+        r = client.post(
+            "/dashboard/entry/update?token=richtig",
+            data={
+                "kind": "workout", "id": "7", "exercise": "Bankdrücken",
+                "sets": "3", "reps": "8", "weight_kg": "82,5",
+                "duration_min": "", "distance_km": "",
+            },
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    update.assert_called_once_with(
+        42, 7, exercise="Bankdrücken", sets=3, reps=8, weight_kg=82.5,
+        duration_min=None, distance_km=None,
+    )
+    assert "view=verlauf" in r.headers["location"]
+    assert "aktualisiert" in r.headers["location"]
+
+
+def test_dashboard_entry_update_bodyweight(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_body_weight_log") as update:
+        r = client.post(
+            "/dashboard/entry/update?token=richtig",
+            data={"kind": "bodyweight", "id": "3", "weight_kg": "84,1"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    update.assert_called_once_with(42, 3, 84.1)
+    assert "view=verlauf" in r.headers["location"]
+
+
+def test_dashboard_entry_update_ungueltige_zahl_speichert_nicht(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_workout_log") as update:
+        r = client.post(
+            "/dashboard/entry/update?token=richtig",
+            data={"kind": "workout", "id": "7", "exercise": "Bankdrücken", "weight_kg": "abc"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    update.assert_not_called()
+    assert "Zahl" in r.headers["location"]
+
+
+def test_dashboard_entry_update_leere_uebung_wird_abgelehnt(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_workout_log") as update:
+        r = client.post(
+            "/dashboard/entry/update?token=richtig",
+            data={"kind": "workout", "id": "7", "exercise": "  "},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    update.assert_not_called()
+
+
+def test_dashboard_entry_update_unbekannter_kind_wird_abgelehnt(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_workout_log") as update:
+        r = client.post(
+            "/dashboard/entry/update?token=richtig",
+            data={"kind": "quatsch", "id": "7"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    update.assert_not_called()
+
+
+def test_dashboard_entry_update_bei_db_fehler_redirect_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_workout_log", side_effect=Exception("supabase down")):
+        r = client.post(
+            "/dashboard/entry/update?token=richtig",
+            data={"kind": "workout", "id": "7", "exercise": "Bankdrücken"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
+
+
+def test_dashboard_entry_delete_ohne_token_401():
+    r = client.post("/dashboard/entry/delete", data={"kind": "workout", "id": "1"})
+    assert r.status_code == 401
+
+
+def test_dashboard_entry_delete_erfolgsfall(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    deleted = {"type": "workout", "exercise": "Kniebeuge", "logged_at": "2026-07-13T07:30:00"}
+    with patch("app.main.db.delete_log_entry", return_value=deleted) as delete:
+        r = client.post(
+            "/dashboard/entry/delete?token=richtig",
+            data={"kind": "workout", "id": "7"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    delete.assert_called_once_with(42, "workout", 7)
+    assert "Gel%C3%B6scht" in r.headers["location"] or "Gelöscht" in r.headers["location"]
+    assert "view=verlauf" in r.headers["location"]
+
+
+def test_dashboard_entry_delete_unbekannter_kind_loescht_nicht(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.delete_log_entry") as delete:
+        r = client.post(
+            "/dashboard/entry/delete?token=richtig",
+            data={"kind": "quatsch", "id": "7"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    delete.assert_not_called()
+
+
+def test_dashboard_entry_delete_bei_db_fehler_redirect_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.delete_log_entry", side_effect=Exception("supabase down")):
+        r = client.post(
+            "/dashboard/entry/delete?token=richtig",
+            data={"kind": "workout", "id": "7"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
+
+
 def test_manifest_ohne_token_401():
     r = client.get("/manifest.webmanifest")
     assert r.status_code == 401

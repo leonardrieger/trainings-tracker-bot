@@ -139,10 +139,24 @@ _STYLE = """
   .untracked-line { font-size: .82rem; color: var(--ink-mute); margin: 1rem 0 0; line-height: 1.5; }
 
   .activity { list-style: none; margin: 1.2rem 0 0; padding: 0; }
-  .activity li { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: .9rem; padding: .8rem 0; border-bottom: 1px solid var(--line); }
+  .activity li { display: grid; grid-template-columns: auto 1fr auto auto; align-items: baseline; gap: .9rem; padding: .8rem 0; border-bottom: 1px solid var(--line); }
   .activity .a-date { font-size: .78rem; color: var(--ink-mute); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .activity .a-name { font-size: .95rem; color: var(--ink); }
   .activity .a-detail { font-size: .85rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .a-edit { padding: 0; font-size: .85rem; }
+  .entry-edit {
+    grid-column: 1 / -1; margin-top: .4rem; padding: .8rem;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  }
+  .entry-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin-bottom: .6rem; }
+  .entry-fields .ef span { display: block; font-size: .62rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-mute); margin-bottom: .3rem; }
+  .entry-fields .ef-wide { grid-column: 1 / -1; }
+  .entry-fields input {
+    display: block; width: 100%; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+    padding: .55rem .65rem; color: var(--ink); font-size: .88rem; font-family: inherit; font-variant-numeric: tabular-nums;
+  }
+  .entry-fields input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  .entry-delete { margin: .5rem 0 0; text-align: right; }
 
   .plan-row { margin: 0 0 1.3rem; }
   .plan-day { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-mute); margin-bottom: .5rem; }
@@ -479,7 +493,59 @@ def _section(
 
 # ------------------------------------------------------------- Verlauf-View
 
-def _verlauf_view(recent: list[dict], active: bool, session_only_exercises: set[str] | None = None) -> str:
+def _entry_edit_panel(e: dict, encoded_token: str) -> str:
+    """✎-Button + verstecktes Bearbeiten/Löschen-Panel für einen Verlauf-Eintrag."""
+    entry_id = e.get("id")
+    if entry_id is None:
+        return ""
+    kind = "bodyweight" if e.get("type") == "bodyweight" else "workout"
+    target = f"entry-{kind}-{entry_id}"
+
+    def val(key) -> str:
+        v = e.get(key)
+        return "" if v is None else (_num(v) if isinstance(v, float) else str(v))
+
+    if kind == "bodyweight":
+        fields = (
+            '<label class="ef"><span>Gewicht (kg)</span>'
+            f'<input name="weight_kg" value="{_attr(val("weight_kg"))}" inputmode="decimal" required></label>'
+        )
+    else:
+        fields = (
+            '<label class="ef ef-wide"><span>Übung</span>'
+            f'<input name="exercise" value="{_attr(e.get("exercise", ""))}" list="exercise-names" required></label>'
+            f'<label class="ef"><span>Sätze</span><input name="sets" value="{_attr(val("sets"))}" inputmode="numeric"></label>'
+            f'<label class="ef"><span>Wdh.</span><input name="reps" value="{_attr(val("reps"))}" inputmode="numeric"></label>'
+            f'<label class="ef"><span>Gewicht (kg)</span><input name="weight_kg" value="{_attr(val("weight_kg"))}" inputmode="decimal"></label>'
+            f'<label class="ef"><span>Dauer (min)</span><input name="duration_min" value="{_attr(val("duration_min"))}" inputmode="decimal"></label>'
+            f'<label class="ef"><span>Distanz (km)</span><input name="distance_km" value="{_attr(val("distance_km"))}" inputmode="decimal"></label>'
+        )
+
+    return (
+        f'<button type="button" class="undo a-edit" data-edit-target="{target}" '
+        'aria-label="Eintrag bearbeiten">✎</button>'
+        f'<div class="entry-edit" id="{target}" hidden>'
+        f'<form method="post" data-ajax action="/dashboard/entry/update?token={encoded_token}">'
+        f'<input type="hidden" name="kind" value="{kind}">'
+        f'<input type="hidden" name="id" value="{entry_id}">'
+        f'<div class="entry-fields">{fields}</div>'
+        '<button type="submit" class="exercise-save">Speichern</button>'
+        "</form>"
+        f'<form class="entry-delete" method="post" data-ajax data-confirm="Eintrag wirklich löschen?" '
+        f'action="/dashboard/entry/delete?token={encoded_token}">'
+        f'<input type="hidden" name="kind" value="{kind}">'
+        f'<input type="hidden" name="id" value="{entry_id}">'
+        '<button type="submit" class="undo">🗑 Löschen</button>'
+        "</form></div>"
+    )
+
+
+def _verlauf_view(
+    recent: list[dict],
+    encoded_token: str,
+    active: bool,
+    session_only_exercises: set[str] | None = None,
+) -> str:
     items = []
     for e in recent:
         detail, done = _entry_detail(e, session_only_exercises)
@@ -487,7 +553,8 @@ def _verlauf_view(recent: list[dict], active: bool, session_only_exercises: set[
         items.append(
             f'<li><span class="a-date">{_short_date(e["logged_at"])}</span>'
             f'<span class="a-name">{_t(_entry_name(e))}</span>'
-            f'<span class="{cls}">{_t(detail)}</span></li>'
+            f'<span class="{cls}">{_t(detail)}</span>'
+            f"{_entry_edit_panel(e, encoded_token)}</li>"
         )
     body = "".join(items) if items else '<p class="empty-line">Noch keine Einträge.</p>'
     hidden_attr = "" if active else " hidden"
@@ -646,6 +713,12 @@ _SCRIPT = """
         input.focus();
       });
     });
+    document.querySelectorAll("[data-edit-target]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var panel = document.getElementById(b.dataset.editTarget);
+        if (panel) panel.hidden = !panel.hidden;
+      });
+    });
   }
 
   function showAjaxError(form) {
@@ -749,7 +822,7 @@ def render_dashboard_html(
         encoded_token, latest_weight, training_days, week_value, summary, view == "fortschritt",
         weight_delta, plan_sections, session_only_exercises,
     )
-    verlauf = _verlauf_view(recent, view == "verlauf", session_only_exercises)
+    verlauf = _verlauf_view(recent, encoded_token, view == "verlauf", session_only_exercises)
     plan = _plan_view(encoded_token, plan_long, plan_short, view == "plan")
     uebungen = _uebungen_view(
         encoded_token, exercise_aliases, cardio_exercises, session_only_exercises, plan_sections,

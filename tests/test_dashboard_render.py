@@ -1,3 +1,4 @@
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -176,8 +177,9 @@ def test_log_formular_und_undo_button_vorhanden():
 def test_alle_formulare_nutzen_ajax():
     html = render_dashboard_html([], "token", None, training_days=0)
     # Jedes Dashboard-Formular soll ohne Full-Page-Reload abschicken.
-    # ("data-ajax" allein käme auch im JS-Selector vor, daher mit action-Attribut zählen.)
-    assert html.count("<form") == html.count('data-ajax action="')
+    forms = re.findall(r"<form[^>]*>", html)
+    assert forms
+    assert all("data-ajax" in form for form in forms)
 
 
 def test_script_enthaelt_ajax_infrastruktur():
@@ -256,6 +258,42 @@ def test_verlauf_zeigt_aktivitaeten_als_liste():
     assert 'class="activity"' in html
     assert "3×8 · 87 kg" in html
     assert "86,4 kg" in html  # deutsche Komma-Darstellung
+
+
+def test_verlauf_eintrag_hat_edit_panel_mit_vorbefuellten_werten():
+    recent = [
+        {"type": "workout", "id": 7, "exercise": "Kniebeuge", "sets": 3, "reps": 8,
+         "weight_kg": 87.5, "distance_km": None, "duration_min": None,
+         "logged_at": "2026-07-13T07:30:00"},
+    ]
+    html = render_dashboard_html(recent, "token", None, training_days=1)
+    assert 'data-edit-target="entry-workout-7"' in html
+    assert '<div class="entry-edit" id="entry-workout-7" hidden>' in html
+    assert 'action="/dashboard/entry/update?token=token"' in html
+    assert 'name="exercise" value="Kniebeuge"' in html
+    assert 'name="weight_kg" value="87,5"' in html
+    assert 'name="sets" value="3"' in html
+
+
+def test_verlauf_loeschen_hat_bestaetigung():
+    recent = [
+        {"type": "bodyweight", "id": 3, "weight_kg": 86.4, "logged_at": "2026-07-13T08:00:00"},
+    ]
+    html = render_dashboard_html(recent, "token", None, training_days=0)
+    assert 'data-confirm="Eintrag wirklich löschen?"' in html
+    assert 'action="/dashboard/entry/delete?token=token"' in html
+    assert 'name="kind" value="bodyweight"' in html
+    assert '<div class="entry-edit" id="entry-bodyweight-3" hidden>' in html
+
+
+def test_verlauf_eintrag_ohne_id_hat_kein_edit_panel():
+    recent = [
+        {"type": "workout", "exercise": "Kniebeuge", "sets": 3, "reps": 8, "weight_kg": 87,
+         "distance_km": None, "duration_min": None, "logged_at": "2026-07-13T07:30:00"},
+    ]
+    html = render_dashboard_html(recent, "token", None, training_days=1)
+    assert 'data-edit-target="' not in html
+    assert '<div class="entry-edit"' not in html
 
 
 def test_pwa_meta_tags_vorhanden():

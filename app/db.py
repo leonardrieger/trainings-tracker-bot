@@ -235,6 +235,55 @@ def delete_last_entry(telegram_user_id: int) -> dict | None:
     return {"type": kind, **row}
 
 
+def update_workout_log(
+    telegram_user_id: int,
+    log_id: int,
+    *,
+    exercise: str,
+    sets: int | None,
+    reps: int | None,
+    weight_kg: float | None,
+    duration_min: float | None,
+    distance_km: float | None,
+) -> None:
+    get_client().table(TABLE).update(
+        {
+            "exercise": exercise,
+            "sets": sets,
+            "reps": reps,
+            "weight_kg": weight_kg,
+            "duration_min": duration_min,
+            "distance_km": distance_km,
+        }
+    ).eq("telegram_user_id", telegram_user_id).eq("id", log_id).execute()
+
+
+def update_body_weight_log(telegram_user_id: int, log_id: int, weight_kg: float) -> None:
+    get_client().table(BODY_WEIGHT_TABLE).update({"weight_kg": weight_kg}).eq(
+        "telegram_user_id", telegram_user_id
+    ).eq("id", log_id).execute()
+
+
+def delete_log_entry(telegram_user_id: int, kind: str, log_id: int) -> dict | None:
+    """Löscht einen einzelnen Eintrag per id und gibt ihn zurück (Format wie delete_last_entry)."""
+    table = BODY_WEIGHT_TABLE if kind == "bodyweight" else TABLE
+    rows = (
+        get_client()
+        .table(table)
+        .select("*")
+        .eq("telegram_user_id", telegram_user_id)
+        .eq("id", log_id)
+        .execute()
+        .data
+    )
+    if not rows:
+        return None
+    get_client().table(table).delete().eq("telegram_user_id", telegram_user_id).eq(
+        "id", log_id
+    ).execute()
+    return {"type": kind, **rows[0]}
+
+
 def get_state(key: str) -> str | None:
     response = get_client().table(STATE_TABLE).select("value").eq("key", key).execute()
     return response.data[0]["value"] if response.data else None

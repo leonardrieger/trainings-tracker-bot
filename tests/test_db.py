@@ -154,6 +154,64 @@ def test_get_max_weight_ohne_eintraege_liefert_none():
     assert result is None
 
 
+def test_update_workout_log_setzt_alle_felder():
+    mock_client = MagicMock()
+    with patch("app.db.get_client", return_value=mock_client):
+        db.update_workout_log(
+            42, 7, exercise="Bankdrücken", sets=3, reps=8, weight_kg=82.5,
+            duration_min=None, distance_km=None,
+        )
+    mock_client.table.assert_called_once_with(db.TABLE)
+    payload = mock_client.table.return_value.update.call_args.args[0]
+    assert payload == {
+        "exercise": "Bankdrücken", "sets": 3, "reps": 8, "weight_kg": 82.5,
+        "duration_min": None, "distance_km": None,
+    }
+    mock_client.table.return_value.update.return_value.eq.assert_called_once_with("telegram_user_id", 42)
+
+
+def test_update_body_weight_log_nutzt_gewichts_tabelle():
+    mock_client = MagicMock()
+    with patch("app.db.get_client", return_value=mock_client):
+        db.update_body_weight_log(42, 5, 83.2)
+    mock_client.table.assert_called_once_with(db.BODY_WEIGHT_TABLE)
+    assert mock_client.table.return_value.update.call_args.args[0] == {"weight_kg": 83.2}
+
+
+def _mock_entry_rows(rows: list[dict]) -> MagicMock:
+    mock_client = MagicMock()
+    chain = mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value
+    chain.execute.return_value.data = rows
+    return mock_client
+
+
+def test_delete_log_entry_liefert_geloeschte_zeile():
+    row = {"id": 7, "exercise": "Kniebeuge", "logged_at": "2026-07-13T07:30:00"}
+    mock_client = _mock_entry_rows([row])
+    with patch("app.db.get_client", return_value=mock_client):
+        result = db.delete_log_entry(42, "workout", 7)
+    assert result == {"type": "workout", **row}
+    mock_client.table.assert_called_with(db.TABLE)
+    mock_client.table.return_value.delete.assert_called_once()
+
+
+def test_delete_log_entry_unbekannte_id_liefert_none_und_loescht_nicht():
+    mock_client = _mock_entry_rows([])
+    with patch("app.db.get_client", return_value=mock_client):
+        result = db.delete_log_entry(42, "workout", 999)
+    assert result is None
+    mock_client.table.return_value.delete.assert_not_called()
+
+
+def test_delete_log_entry_bodyweight_nutzt_gewichts_tabelle():
+    row = {"id": 3, "weight_kg": 84.0, "logged_at": "2026-07-13T08:00:00"}
+    mock_client = _mock_entry_rows([row])
+    with patch("app.db.get_client", return_value=mock_client):
+        result = db.delete_log_entry(42, "bodyweight", 3)
+    assert result == {"type": "bodyweight", **row}
+    mock_client.table.assert_called_with(db.BODY_WEIGHT_TABLE)
+
+
 def test_default_exercise_rows_enthaelt_alle_uebungen():
     rows = db._default_exercise_rows()
     assert {r["name"] for r in rows} == set(EXERCISE_ALIASES)
