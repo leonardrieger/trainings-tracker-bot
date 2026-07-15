@@ -169,8 +169,23 @@ def test_ohne_flash_kein_flash_banner():
 
 def test_log_formular_und_undo_button_vorhanden():
     html = render_dashboard_html([], "mein-token", None, training_days=0)
-    assert '<form class="quick" method="post" action="/dashboard/log?token=mein-token">' in html
+    assert '<form class="quick" method="post" data-ajax action="/dashboard/log?token=mein-token">' in html
     assert 'action="/dashboard/undo?token=mein-token"' in html
+
+
+def test_alle_formulare_nutzen_ajax():
+    html = render_dashboard_html([], "token", None, training_days=0)
+    # Jedes Dashboard-Formular soll ohne Full-Page-Reload abschicken.
+    # ("data-ajax" allein käme auch im JS-Selector vor, daher mit action-Attribut zählen.)
+    assert html.count("<form") == html.count('data-ajax action="')
+
+
+def test_script_enthaelt_ajax_infrastruktur():
+    html = render_dashboard_html([], "token", None, training_days=0)
+    assert "initDashboard" in html
+    assert "fetch(" in html
+    assert "is-loading" in html
+    assert "Netzwerkfehler" in html
 
 
 def test_fuenf_tabs_und_ansichten_vorhanden():

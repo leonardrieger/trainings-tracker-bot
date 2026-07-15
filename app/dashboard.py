@@ -188,9 +188,18 @@ _STYLE = """
   .tab.active { color: var(--accent); }
   .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 8px; }
 
+  form.is-loading button[type="submit"] { opacity: .55; pointer-events: none; }
+  form.is-loading button[type="submit"]::after {
+    content: ""; display: inline-block; width: .7em; height: .7em; margin-left: .45em;
+    vertical-align: -.05em; border: 2px solid currentColor; border-top-color: transparent;
+    border-radius: 50%;
+  }
+
   @media (prefers-reduced-motion: no-preference) {
     .view:not([hidden]) { animation: fade .28s ease; }
     @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    form.is-loading button[type="submit"]::after { animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   }
 </style>
 """
@@ -328,13 +337,13 @@ def _heute_view(
     parts.append(_repeat_chips(last_sets or [], session_only_exercises))
 
     parts.append(
-        f'<form class="quick" method="post" action="/dashboard/log?token={encoded_token}">'
+        f'<form class="quick" method="post" data-ajax action="/dashboard/log?token={encoded_token}">'
         '<input type="text" name="text" required aria-label="Eintrag hinzufügen" '
         'list="exercise-names" '
         "placeholder='z. B. &quot;3×8 100 kg Kniebeuge&quot;'>"
         '<button type="submit" aria-label="Eintragen">→</button>'
         "</form>"
-        f'<form class="undo-form" method="post" action="/dashboard/undo?token={encoded_token}">'
+        f'<form class="undo-form" method="post" data-ajax action="/dashboard/undo?token={encoded_token}">'
         '<button type="submit" class="undo">↩ Letzten Eintrag rückgängig</button>'
         "</form>"
         f"{_exercise_datalist(exercise_aliases)}"
@@ -506,11 +515,11 @@ def _plan_view(encoded_token: str, plan_long: dict[int, str], plan_short: dict[i
     return (
         f'<section class="view" id="view-plan"{hidden_attr}>'
         '<div class="view-head"><span class="micro-label">Wochenplan bearbeiten</span></div>'
-        f'<form method="post" action="/dashboard/plan?token={encoded_token}">'
+        f'<form method="post" data-ajax action="/dashboard/plan?token={encoded_token}">'
         f'{"".join(rows)}'
         '<button type="submit" class="plan-save">Speichern</button>'
         "</form>"
-        f'<div class="plan-reset"><form method="post" action="/dashboard/plan/reset?token={encoded_token}" class="undo-form">'
+        f'<div class="plan-reset"><form method="post" data-ajax action="/dashboard/plan/reset?token={encoded_token}" class="undo-form">'
         '<button type="submit" class="undo">↺ Auf Standard zurücksetzen</button>'
         "</form></div>"
         "</section>"
@@ -547,7 +556,7 @@ def _uebungen_view(
         session_checked = " checked" if name in session_only_exercises else ""
         rows.append(
             '<div class="exercise-row">'
-            f'<form method="post" action="/dashboard/exercises/update?token={encoded_token}">'
+            f'<form method="post" data-ajax action="/dashboard/exercises/update?token={encoded_token}">'
             f'<input type="hidden" name="original_name" value="{_attr(name)}">'
             f'<input type="text" name="name" value="{_attr(name)}" aria-label="Name" required>'
             f'<input type="text" name="aliases" value="{_attr(aliases_text)}" '
@@ -557,7 +566,7 @@ def _uebungen_view(
             f'<label><input type="checkbox" name="is_session_only"{session_checked}> Ohne Zahlen (Session)</label>'
             '<button type="submit" class="exercise-save">Speichern</button>'
             "</form>"
-            f'<div class="exercise-delete-form"><form method="post" '
+            f'<div class="exercise-delete-form"><form method="post" data-ajax '
             f'action="/dashboard/exercises/delete?token={encoded_token}">'
             f'<input type="hidden" name="name" value="{_attr(name)}">'
             '<button type="submit" class="undo">🗑 Löschen</button>'
@@ -567,7 +576,7 @@ def _uebungen_view(
 
     add_form = (
         '<div class="exercise-row exercise-add"><span class="plan-day">Neue Übung</span>'
-        f'<form method="post" action="/dashboard/exercises/add?token={encoded_token}">'
+        f'<form method="post" data-ajax action="/dashboard/exercises/add?token={encoded_token}">'
         '<input type="text" name="name" aria-label="Name" placeholder="Name" required>'
         '<input type="text" name="aliases" aria-label="Aliase (kommagetrennt)" '
         'placeholder="Aliase, kommagetrennt (optional)">'
@@ -613,21 +622,80 @@ _SCRIPT = """
     heute: "view-heute", fortschritt: "view-fortschritt", verlauf: "view-verlauf",
     plan: "view-plan", uebungen: "view-uebungen"
   };
-  document.querySelectorAll(".tab").forEach(function (t) {
-    t.addEventListener("click", function () {
-      var v = t.dataset.view;
-      document.querySelectorAll(".tab").forEach(function (x) { x.classList.toggle("active", x === t); });
-      Object.keys(views).forEach(function (k) { document.getElementById(views[k]).hidden = (k !== v); });
-      window.scrollTo(0, 0);
+  var currentView = "heute";
+
+  function activateView(v) {
+    document.querySelectorAll(".tab").forEach(function (x) { x.classList.toggle("active", x.dataset.view === v); });
+    Object.keys(views).forEach(function (k) { document.getElementById(views[k]).hidden = (k !== v); });
+  }
+
+  // Nach jedem AJAX-Swap erneut aufgerufen: per innerHTML/replaceWith eingesetzte
+  // Elemente haben keine Listener mehr.
+  function initDashboard() {
+    document.querySelectorAll(".tab").forEach(function (t) {
+      t.addEventListener("click", function () {
+        currentView = t.dataset.view;
+        activateView(currentView);
+        window.scrollTo(0, 0);
+      });
     });
-  });
-  document.querySelectorAll(".chip").forEach(function (c) {
-    c.addEventListener("click", function () {
-      var input = document.querySelector(".quick input");
-      input.value = c.dataset.fill;
-      input.focus();
+    document.querySelectorAll(".chip").forEach(function (c) {
+      c.addEventListener("click", function () {
+        var input = document.querySelector(".quick input");
+        input.value = c.dataset.fill;
+        input.focus();
+      });
     });
+  }
+
+  function showAjaxError(form) {
+    var flash = document.createElement("div");
+    flash.className = "flash";
+    flash.textContent = "\\u26a0\\ufe0f Netzwerkfehler \\u2014 bitte nochmal versuchen.";
+    form.insertAdjacentElement("afterend", flash);
+    setTimeout(function () { flash.remove(); }, 5000);
+  }
+
+  document.addEventListener("submit", function (ev) {
+    var form = ev.target;
+    if (!form.matches("[data-ajax]")) return;
+    ev.preventDefault();
+    if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) return;
+
+    var wasQuick = form.classList.contains("quick");
+    var btn = form.querySelector('button[type="submit"]');
+    form.classList.add("is-loading");
+    form.setAttribute("aria-busy", "true");
+    if (btn) btn.disabled = true;
+
+    fetch(form.action, { method: "POST", body: new FormData(form) })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.text();
+      })
+      .then(function (htmlText) {
+        var next = new DOMParser().parseFromString(htmlText, "text/html").querySelector(".app");
+        var current = document.querySelector(".app");
+        if (!next || !current) { window.location.reload(); return; }
+        current.replaceWith(next);
+        initDashboard();
+        activateView(currentView);
+        if (wasQuick) {
+          var input = document.querySelector(".quick input");
+          if (input) input.focus();
+        }
+      })
+      .catch(function () {
+        form.classList.remove("is-loading");
+        form.removeAttribute("aria-busy");
+        if (btn) btn.disabled = false;
+        showAjaxError(form);
+      });
   });
+
+  var activeTab = document.querySelector(".tab.active");
+  if (activeTab) { currentView = activeTab.dataset.view; }
+  initDashboard();
   if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js"); }
 </script>
 """
