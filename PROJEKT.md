@@ -267,7 +267,6 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 ## Was als Nächstes ansteht
 
 **Noch nicht terminiert:**
-- **CSV-Export** vom Dashboard (Daten-Backup / eigene Auswertung).
 - **Mehrbenutzer-Fähigkeit** — mehrere Telegram-Nutzer mit je eigenem Plan/Daten statt
   fixem `ALLOWED_TELEGRAM_USER_ID`. Deutlich größerer Schritt (Auth, Datentrennung,
   Onboarding) — nur sinnvoll, wenn das Projekt bewusst von „für mich" zu „für viele"

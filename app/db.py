@@ -76,6 +76,66 @@ def get_max_weight(telegram_user_id: int, exercise: str) -> float | None:
     return response.data[0]["weight_kg"] if response.data else None
 
 
+def get_exercise_records(telegram_user_id: int, exercise: str) -> dict:
+    """Bisherige Bestwerte einer Übung für die PR-Erkennung.
+
+    max_reps zählt nur Einträge ohne Gewicht (z.B. Klimmzüge ohne Zusatzgewicht),
+    max_volume nur vollständige Sätze×Wdh.×Gewicht-Einträge.
+    """
+    rows = (
+        get_client()
+        .table(TABLE)
+        .select("sets, reps, weight_kg")
+        .eq("telegram_user_id", telegram_user_id)
+        .eq("exercise", exercise)
+        .execute()
+        .data
+    )
+    weights = [r["weight_kg"] for r in rows if r.get("weight_kg") is not None]
+    bodyweight_reps = [
+        r["reps"] for r in rows if r.get("weight_kg") is None and r.get("reps") is not None
+    ]
+    volumes = [
+        r["sets"] * r["reps"] * r["weight_kg"]
+        for r in rows
+        if r.get("sets") is not None and r.get("reps") is not None and r.get("weight_kg") is not None
+    ]
+    return {
+        "max_weight": max(weights) if weights else None,
+        "max_reps": max(bodyweight_reps) if bodyweight_reps else None,
+        "max_volume": max(volumes) if volumes else None,
+    }
+
+
+def get_all_workout_logs(telegram_user_id: int) -> list[dict]:
+    """Alle Workout-Logs chronologisch (für CSV-Export). Explizites Limit,
+    weil Supabase Antworten sonst still bei 1000 Zeilen kappt."""
+    return (
+        get_client()
+        .table(TABLE)
+        .select("*")
+        .eq("telegram_user_id", telegram_user_id)
+        .order("logged_at")
+        .limit(10000)
+        .execute()
+        .data
+    )
+
+
+def get_all_body_weight_logs(telegram_user_id: int) -> list[dict]:
+    """Alle Körpergewicht-Logs chronologisch (für CSV-Export)."""
+    return (
+        get_client()
+        .table(BODY_WEIGHT_TABLE)
+        .select("*")
+        .eq("telegram_user_id", telegram_user_id)
+        .order("logged_at")
+        .limit(10000)
+        .execute()
+        .data
+    )
+
+
 def get_exercise_summary(telegram_user_id: int) -> dict[str, dict]:
     """Pro Übung: Anzahl Einträge + Datum des letzten Eintrags."""
     response = (

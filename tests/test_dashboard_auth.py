@@ -130,7 +130,7 @@ def test_dashboard_log_ohne_token_401():
 def test_dashboard_log_erkannter_eintrag_wird_gespeichert(monkeypatch):
     monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
     with patch("app.main.db.insert_log") as insert, patch(
-        "app.main.db.get_max_weight", return_value=None
+        "app.main.db.get_exercise_records", return_value={"max_weight": None, "max_reps": None, "max_volume": None}
     ):
         r = client.post(
             "/dashboard/log?token=richtig",
@@ -158,7 +158,7 @@ def test_dashboard_log_nicht_erkannter_text_speichert_nicht(monkeypatch):
 def test_dashboard_log_bei_db_fehler_redirect_statt_500(monkeypatch):
     monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
     with patch("app.main.db.insert_log", side_effect=Exception("supabase down")), patch(
-        "app.main.db.get_max_weight", return_value=None
+        "app.main.db.get_exercise_records", return_value={"max_weight": None, "max_reps": None, "max_volume": None}
     ):
         r = client.post(
             "/dashboard/log?token=richtig",
@@ -568,6 +568,41 @@ def test_dashboard_entry_delete_bei_db_fehler_redirect_statt_500(monkeypatch):
         )
     assert r.status_code == 303
     assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
+
+
+def test_dashboard_export_ohne_token_401():
+    r = client.get("/dashboard/export.csv")
+    assert r.status_code == 401
+
+
+def test_dashboard_export_liefert_beide_eintragstypen_deutsch_formatiert(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    workouts = [
+        {"logged_at": "2026-07-10T10:00:00", "exercise": "Kniebeuge", "sets": 3, "reps": 8,
+         "weight_kg": 87.5, "duration_min": None, "distance_km": None, "raw_text": "3x8 87,5kg Kniebeuge"},
+    ]
+    weights = [
+        {"logged_at": "2026-07-11T08:00:00", "weight_kg": 84.2, "raw_text": "Gewicht 84,2"},
+    ]
+    with patch("app.main.db.get_all_workout_logs", return_value=workouts), patch(
+        "app.main.db.get_all_body_weight_logs", return_value=weights
+    ):
+        r = client.get("/dashboard/export.csv?token=richtig")
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["content-type"]
+    assert 'filename="training-export-' in r.headers["content-disposition"]
+    assert r.text.startswith("\ufeff")
+    lines = r.text.lstrip("\ufeff").strip().splitlines()
+    assert lines[0] == "typ;datum;uebung;saetze;wdh;gewicht_kg;dauer_min;distanz_km;original_text"
+    assert lines[1].startswith("training;2026-07-10T10:00:00;Kniebeuge;3;8;87,5;;;")
+    assert lines[2].startswith("koerpergewicht;2026-07-11T08:00:00;Körpergewicht;;;84,2;;;")
+
+
+def test_dashboard_export_bei_db_fehler_503(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.get_all_workout_logs", side_effect=Exception("supabase down")):
+        r = client.get("/dashboard/export.csv?token=richtig")
+    assert r.status_code == 503
 
 
 def test_manifest_ohne_token_401():

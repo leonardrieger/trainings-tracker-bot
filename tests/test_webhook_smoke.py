@@ -33,6 +33,12 @@ def _voice_update(file_id: str = "voice1", user_id: int = 42) -> dict:
     return {"message": {"chat": {"id": user_id}, "from": {"id": user_id}, "voice": {"file_id": file_id}}}
 
 
+def _records(**overrides) -> dict:
+    records = {"max_weight": None, "max_reps": None, "max_volume": None}
+    records.update(overrides)
+    return records
+
+
 def test_start_command():
     with patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("/start"))
@@ -43,7 +49,7 @@ def test_start_command():
 
 def test_normal_message_inserts_and_replies():
     with patch("app.main.db.insert_log") as insert, patch(
-        "app.main.db.get_max_weight", return_value=None
+        "app.main.db.get_exercise_records", return_value=_records()
     ), patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
         assert r.status_code == 200
@@ -56,30 +62,70 @@ def test_normal_message_inserts_and_replies():
 
 def test_normal_message_neuer_rekord_wird_gemeldet():
     with patch("app.main.db.insert_log"), patch(
-        "app.main.db.get_max_weight", return_value=75
+        "app.main.db.get_exercise_records", return_value=_records(max_weight=75)
     ), patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
     assert r.status_code == 200
-    assert "Neuer Rekord" in send.call_args[0][1]
+    assert "Neuer Gewichts-Rekord" in send.call_args[0][1]
     assert "75kg" in send.call_args[0][1]
 
 
 def test_normal_message_kein_rekord_bei_gleichem_gewicht():
     with patch("app.main.db.insert_log"), patch(
-        "app.main.db.get_max_weight", return_value=80
+        "app.main.db.get_exercise_records", return_value=_records(max_weight=80)
     ), patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
     assert r.status_code == 200
-    assert "Neuer Rekord" not in send.call_args[0][1]
+    assert "Rekord" not in send.call_args[0][1]
 
 
 def test_normal_message_erster_eintrag_kein_rekord():
     with patch("app.main.db.insert_log"), patch(
-        "app.main.db.get_max_weight", return_value=None
+        "app.main.db.get_exercise_records", return_value=_records()
     ), patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
     assert r.status_code == 200
-    assert "Neuer Rekord" not in send.call_args[0][1]
+    assert "Rekord" not in send.call_args[0][1]
+
+
+def test_volumen_rekord_wird_gemeldet_wenn_gewicht_kein_rekord():
+    # 2×8×80 = 1280 kg Volumen > 1200, aber 80 kg < 90 kg Bestgewicht.
+    with patch("app.main.db.insert_log"), patch(
+        "app.main.db.get_exercise_records", return_value=_records(max_weight=90, max_volume=1200)
+    ), patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
+    assert r.status_code == 200
+    assert "Volumen-Rekord" in send.call_args[0][1]
+    assert "1280" in send.call_args[0][1]
+
+
+def test_gewichts_rekord_hat_vorrang_vor_volumen_rekord():
+    with patch("app.main.db.insert_log"), patch(
+        "app.main.db.get_exercise_records", return_value=_records(max_weight=75, max_volume=100)
+    ), patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_update("2 Sets 8 Wiederholungen 80kg Bankdrücken"))
+    assert r.status_code == 200
+    assert "Gewichts-Rekord" in send.call_args[0][1]
+    assert "Volumen" not in send.call_args[0][1]
+
+
+def test_wiederholungs_rekord_bei_gewichtslosem_eintrag():
+    with patch("app.main.db.insert_log"), patch(
+        "app.main.db.get_exercise_records", return_value=_records(max_reps=12)
+    ), patch("app.main.telegram.send_message") as send:
+        r = client.post("/webhook", json=_update("3 Sätze 15 Wiederholungen Klimmzüge"))
+    assert r.status_code == 200
+    assert "Wiederholungs-Rekord" in send.call_args[0][1]
+    assert "12 Wdh." in send.call_args[0][1]
+
+
+def test_cardio_eintrag_fragt_keine_rekorde_ab():
+    with patch("app.main.db.insert_log"), patch(
+        "app.main.db.get_exercise_records"
+    ) as records, patch("app.main.telegram.send_message"):
+        r = client.post("/webhook", json=_update("30 min 5 km Laufen"))
+    assert r.status_code == 200
+    records.assert_not_called()
 
 
 def test_unauthorized_user_ignored():
@@ -178,7 +224,7 @@ def test_sprachnachricht_wird_transkribiert_und_geloggt():
     with patch("app.main.telegram.get_file_bytes", return_value=b"fake-audio"), patch(
         "app.main.transcribe.transcribe_voice", return_value="3x8 80kg Bankdrücken"
     ), patch("app.main.db.insert_log") as insert, patch(
-        "app.main.db.get_max_weight", return_value=None
+        "app.main.db.get_exercise_records", return_value=_records()
     ), patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_voice_update())
     assert r.status_code == 200
@@ -263,7 +309,7 @@ def test_webhook_secret_fehlt_im_header_wird_ignoriert(monkeypatch):
 def test_webhook_secret_korrekt_wird_verarbeitet(monkeypatch):
     monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "geheim")
     with patch("app.main.db.insert_log") as insert, patch(
-        "app.main.db.get_max_weight", return_value=None
+        "app.main.db.get_exercise_records", return_value=_records()
     ), patch("app.main.telegram.send_message"):
         r = client.post(
             "/webhook",
@@ -276,7 +322,7 @@ def test_webhook_secret_korrekt_wird_verarbeitet(monkeypatch):
 
 def test_db_fehler_fuehrt_zu_freundlicher_meldung_statt_500():
     with patch("app.main.db.insert_log", side_effect=Exception("supabase down")), patch(
-        "app.main.db.get_max_weight", return_value=None
+        "app.main.db.get_exercise_records", return_value=_records()
     ), patch("app.main.telegram.send_message") as send:
         r = client.post("/webhook", json=_update("3x8 80kg Bankdrücken"))
         assert r.status_code == 200

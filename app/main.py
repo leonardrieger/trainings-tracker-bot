@@ -1,7 +1,9 @@
 """FastAPI-App: Telegram-Webhook-Endpoint + Command-Routing."""
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import json
 import logging
 import os
@@ -207,16 +209,47 @@ async def webhook(request: Request) -> dict:
     return {"ok": True}
 
 
+def _pr_message(parsed: ParsedWorkout, records: dict) -> str | None:
+    """Höchstens eine PR-Zeile; Präzedenz: Gewicht > Volumen > Wiederholungen.
+
+    Beim allerersten Eintrag einer Übung (alle Bestwerte None) gibt es wie bisher
+    keine Meldung. Reps-PRs zählen nur für gewichtslose Einträge (z.B. Klimmzüge)."""
+    if parsed.weight_kg is not None:
+        prev_weight = records.get("max_weight")
+        if prev_weight is not None and parsed.weight_kg > prev_weight:
+            return f"🎉 Neuer Gewichts-Rekord! Vorher: {prev_weight:g}kg"
+        prev_volume = records.get("max_volume")
+        if parsed.sets is not None and parsed.reps is not None and prev_volume is not None:
+            volume = parsed.sets * parsed.reps * parsed.weight_kg
+            if volume > prev_volume:
+                return f"💪 Neuer Volumen-Rekord: {volume:g} kg gesamt (vorher {prev_volume:g} kg)."
+        return None
+    prev_reps = records.get("max_reps")
+    if parsed.reps is not None and prev_reps is not None and parsed.reps > prev_reps:
+        return f"🎉 Neuer Wiederholungs-Rekord! Vorher: {prev_reps} Wdh."
+    return None
+
+
 def _log_workout_and_build_message(user_id: int, parsed: ParsedWorkout) -> str:
     if parsed.record_type == "bodyweight":
         db.insert_body_weight(user_id, parsed.weight_kg, parsed.raw_text)
         return parsed.confirmation_text()
 
-    previous_max = db.get_max_weight(user_id, parsed.exercise) if parsed.weight_kg is not None else None
+    # Bestwerte vor dem Insert holen, sonst vergleicht der PR-Check gegen sich selbst.
+    # Cardio-Einträge (Dauer/Distanz) haben keine PR-Logik.
+    needs_records = (
+        parsed.distance_km is None
+        and parsed.duration_min is None
+        and (parsed.weight_kg is not None or parsed.reps is not None)
+        and bool(parsed.exercise)
+    )
+    records = db.get_exercise_records(user_id, parsed.exercise) if needs_records else None
     db.insert_log(user_id, parsed)
     message = parsed.confirmation_text()
-    if previous_max is not None and parsed.weight_kg > previous_max:
-        message += f"\n🎉 Neuer Rekord! Vorher: {previous_max:g}kg"
+    if records is not None:
+        pr = _pr_message(parsed, records)
+        if pr:
+            message += f"\n{pr}"
     return message
 
 
@@ -454,6 +487,62 @@ def dashboard_undo(token: str = "") -> Response:
     except Exception:
         logging.exception("Fehler beim Rückgängig-Machen des letzten Eintrags")
         return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG)
+
+
+@app.get("/dashboard/export.csv")
+def dashboard_export(token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    try:
+        user_id = _allowed_user_id()
+
+        def de(value) -> str:
+            return "" if value is None else f"{value:g}".replace(".", ",")
+
+        rows: list[tuple[str, list[str]]] = []
+        for w in db.get_all_workout_logs(user_id):
+            rows.append(
+                (
+                    w["logged_at"],
+                    [
+                        "training", w["logged_at"], w.get("exercise") or "",
+                        de(w.get("sets")), de(w.get("reps")), de(w.get("weight_kg")),
+                        de(w.get("duration_min")), de(w.get("distance_km")),
+                        w.get("raw_text") or "",
+                    ],
+                )
+            )
+        for w in db.get_all_body_weight_logs(user_id):
+            rows.append(
+                (
+                    w["logged_at"],
+                    [
+                        "koerpergewicht", w["logged_at"], "Körpergewicht",
+                        "", "", de(w.get("weight_kg")), "", "",
+                        w.get("raw_text") or "",
+                    ],
+                )
+            )
+        rows.sort(key=lambda r: r[0])
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=";")
+        writer.writerow(
+            ["typ", "datum", "uebung", "saetze", "wdh", "gewicht_kg", "dauer_min", "distanz_km", "original_text"]
+        )
+        writer.writerows(row for _, row in rows)
+
+        today = datetime.now(BERLIN).date().isoformat()
+        # Semikolon-Delimiter, Komma-Dezimalen und UTF-8-BOM: so öffnet deutsches
+        # Excel die Datei per Doppelklick korrekt (Spalten + Umlaute).
+        return Response(
+            content="\ufeff" + buffer.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="training-export-{today}.csv"'},
+        )
+    except Exception:
+        logging.exception("Fehler beim CSV-Export")
+        return Response(status_code=503)
 
 
 def _parse_de_number(raw: str) -> float | None:

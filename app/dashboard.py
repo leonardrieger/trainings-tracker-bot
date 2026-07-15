@@ -157,6 +157,8 @@ _STYLE = """
   }
   .entry-fields input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
   .entry-delete { margin: .5rem 0 0; text-align: right; }
+  .export-line { margin: 1.4rem 0 0; text-align: center; }
+  a.undo { text-decoration: none; display: inline-block; }
 
   .plan-row { margin: 0 0 1.3rem; }
   .plan-day { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-mute); margin-bottom: .5rem; }
@@ -580,7 +582,10 @@ def _verlauf_view(
     return (
         f'<section class="view" id="view-verlauf"{hidden_attr}>'
         '<div class="view-head"><span class="micro-label">Letzte Aktivitäten</span></div>'
-        f'<ul class="activity">{body}</ul></section>'
+        f'<ul class="activity">{body}</ul>'
+        f'<p class="export-line"><a class="undo" href="/dashboard/export.csv?token={encoded_token}" '
+        "download>⬇ Als CSV exportieren</a></p>"
+        "</section>"
     )
 
 

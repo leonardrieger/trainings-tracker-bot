@@ -319,6 +319,12 @@ def test_verlauf_eintrag_ohne_id_hat_kein_edit_panel():
     assert '<div class="entry-edit"' not in html
 
 
+def test_verlauf_hat_csv_export_link():
+    html = render_dashboard_html([], "mein-token", None, training_days=0)
+    assert 'href="/dashboard/export.csv?token=mein-token" download' in html
+    assert "Als CSV exportieren" in html
+
+
 def test_pwa_meta_tags_vorhanden():
     html = render_dashboard_html([], "mein-token", None, training_days=0)
     assert 'rel="manifest" href="/manifest.webmanifest?token=mein-token"' in html

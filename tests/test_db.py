@@ -212,6 +212,37 @@ def test_delete_log_entry_bodyweight_nutzt_gewichts_tabelle():
     mock_client.table.assert_called_with(db.BODY_WEIGHT_TABLE)
 
 
+def test_get_exercise_records_aggregiert_bestwerte():
+    rows = [
+        {"sets": 3, "reps": 8, "weight_kg": 80},
+        {"sets": 2, "reps": 10, "weight_kg": 75},
+        {"sets": None, "reps": 12, "weight_kg": None},  # gewichtslos -> zählt für max_reps
+        {"sets": 3, "reps": None, "weight_kg": 85},  # unvollständig -> kein Volumen
+    ]
+    mock_client = _mock_entry_rows(rows)
+    with patch("app.db.get_client", return_value=mock_client):
+        records = db.get_exercise_records(42, "Klimmzüge")
+    assert records == {"max_weight": 85, "max_reps": 12, "max_volume": 1920}
+
+
+def test_get_exercise_records_ohne_eintraege_alles_none():
+    mock_client = _mock_entry_rows([])
+    with patch("app.db.get_client", return_value=mock_client):
+        records = db.get_exercise_records(42, "Klimmzüge")
+    assert records == {"max_weight": None, "max_reps": None, "max_volume": None}
+
+
+def test_get_all_logs_nutzen_hohes_limit_gegen_supabase_cap():
+    mock_client = MagicMock()
+    chain = mock_client.table.return_value.select.return_value.eq.return_value.order.return_value
+    chain.limit.return_value.execute.return_value.data = []
+    with patch("app.db.get_client", return_value=mock_client):
+        db.get_all_workout_logs(42)
+        db.get_all_body_weight_logs(42)
+    for call in chain.limit.call_args_list:
+        assert call.args[0] == 10000
+
+
 def test_default_exercise_rows_enthaelt_alle_uebungen():
     rows = db._default_exercise_rows()
     assert {r["name"] for r in rows} == set(EXERCISE_ALIASES)
