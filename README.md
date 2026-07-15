@@ -1,4 +1,17 @@
-# Trainings-Tracker Telegram-Bot
+<p align="center">
+  <img src="docs/banner.svg" alt="Trainings-Tracker" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/leonardrieger/trainings-tracker-bot/actions/workflows/test.yml">
+    <img src="https://github.com/leonardrieger/trainings-tracker-bot/actions/workflows/test.yml/badge.svg" alt="Tests">
+  </a>
+  <img src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/PWA-installierbar-d8a657" alt="PWA installierbar">
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/leonardrieger/trainings-tracker-bot?color=6fa77c" alt="MIT-Lizenz">
+  </a>
+</p>
 
 Ein persönlicher Fitness-Tracker, der **komplett per Telegram in freier Sprache**
 bedient wird: Du schickst „3×8 100 kg Kniebeuge" oder „Gewicht heute 84,2 kg", und der
@@ -10,7 +23,35 @@ Gebaut, um **kostenlos** zu laufen (Supabase Free + Render Free + Groq Free) und
 eine Person gedacht — zum Selbst-Hosten forken und in [`app/config.py`](app/config.py)
 den eigenen Trainingsplan eintragen.
 
-![Beispiel-Fortschrittschart aus dem Bot](docs/beispiel-chart.png)
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/heute.png" width="260"><br>
+      <sub><b>Heute</b> — Tagesplan, Wochenstreifen, Schnell-Eingabe</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/fortschritt.png" width="260"><br>
+      <sub><b>Fortschritt</b> — Gewichts- und Übungs-Charts</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/verlauf.png" width="260"><br>
+      <sub><b>Verlauf</b> — Aktivitäten bearbeiten &amp; löschen</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/plan.png" width="260"><br>
+      <sub><b>Plan</b> — Wochenplan direkt im Dashboard anpassen</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/uebungen.png" width="260"><br>
+      <sub><b>Übungen</b> — Katalog inkl. Aliase &amp; Sektionen verwalten</sub>
+    </td>
+    <td align="center" width="33%"></td>
+  </tr>
+</table>
 
 ## Features
 

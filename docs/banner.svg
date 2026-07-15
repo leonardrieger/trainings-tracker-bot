@@ -1,0 +1,48 @@
+<svg width="1200" height="300" viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#15171a" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#15171a" stop-opacity="0.55"/>
+    </linearGradient>
+    <clipPath id="round">
+      <rect x="1" y="1" width="1198" height="298" rx="26"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect x="1" y="1" width="1198" height="298" fill="#0e0f11"/>
+    <rect x="640" y="1" width="559" height="298" fill="url(#fade)"/>
+
+    <!-- dezentes Gitternetz, wie im echten Fortschritts-Chart -->
+    <g stroke="#212429" stroke-width="1">
+      <line x1="700" y1="70" x2="1160" y2="70"/>
+      <line x1="700" y1="120" x2="1160" y2="120"/>
+      <line x1="700" y1="170" x2="1160" y2="170"/>
+      <line x1="700" y1="220" x2="1160" y2="220"/>
+    </g>
+
+    <!-- abstrakte Fortschrittslinie, Stil wie app/chart.py -->
+    <polyline points="700,215 760,205 820,190 880,178 940,150 1000,132 1060,105 1120,88"
+              fill="none" stroke="#c9cbc4" stroke-width="2.4" stroke-linecap="round" opacity="0.9"/>
+    <polygon points="700,215 760,205 820,190 880,178 940,150 1000,132 1060,105 1120,88 1120,240 700,240"
+             fill="#c9cbc4" opacity="0.05"/>
+    <circle cx="1120" cy="88" r="7" fill="#d8a657" stroke="#0e0f11" stroke-width="2"/>
+
+    <text x="60" y="118" font-family="-apple-system, 'Segoe UI', Roboto, sans-serif" font-size="58"
+          font-weight="300" letter-spacing="-1.5" fill="#f3f4f1">Trainings-Tracker</text>
+    <text x="60" y="158" font-family="-apple-system, 'Segoe UI', Roboto, sans-serif" font-size="21"
+          font-weight="400" fill="#a5a7a1">Training per Telegram loggen · Fortschritt in einer App sehen</text>
+
+    <!-- Pills, Stil wie .chip / .week-pill im Dashboard -->
+    <g font-family="-apple-system, 'Segoe UI', Roboto, sans-serif" font-size="14.5" font-weight="600">
+      <rect x="60" y="192" width="118" height="34" rx="17" fill="none" stroke="rgba(255,255,255,.16)"/>
+      <text x="82" y="214" fill="#d9dad6">Telegram-Bot</text>
+
+      <rect x="190" y="192" width="140" height="34" rx="17" fill="none" stroke="rgba(255,255,255,.16)"/>
+      <text x="212" y="214" fill="#d9dad6">PWA-Dashboard</text>
+
+      <rect x="342" y="192" width="140" height="34" rx="17" fill="rgba(216,166,87,.14)" stroke="rgba(216,166,87,.3)"/>
+      <text x="364" y="214" fill="#d8a657">100% kostenlos</text>
+    </g>
+  </g>
+</svg>
