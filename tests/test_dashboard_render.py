@@ -319,6 +319,70 @@ def test_verlauf_eintrag_ohne_id_hat_kein_edit_panel():
     assert '<div class="entry-edit"' not in html
 
 
+# ----------------------------------------------------------------- Heatmap
+
+def test_heatmap_erscheint_mit_dates_und_today():
+    montag = date(2026, 7, 20)
+    html = render_dashboard_html(
+        [], "token", None, training_days=0, today=montag,
+        heatmap_dates={"2026-07-20"}, view="verlauf",
+    )
+    assert 'class="heatmap-wrap"' in html
+    assert "Letzte 6 Monate" in html
+    assert 'heatmap-cell trained' in html
+
+
+def test_heatmap_fehlt_ohne_heatmap_dates():
+    montag = date(2026, 7, 20)
+    html = render_dashboard_html([], "token", None, training_days=0, today=montag, view="verlauf")
+    assert 'class="heatmap-wrap"' not in html
+
+
+def test_heatmap_fehlt_ohne_today():
+    html = render_dashboard_html(
+        [], "token", None, training_days=0, heatmap_dates={"2026-07-20"}, view="verlauf"
+    )
+    assert 'class="heatmap-wrap"' not in html
+
+
+# -------------------------------------------------------------- Streak-Karte
+
+def test_streak_karte_zeigt_tage_und_ziel():
+    montag = date(2026, 7, 20)
+    html = render_dashboard_html(
+        [], "token", None, training_days=0, today=montag,
+        week_training_days=3, streak_weeks=2,
+    )
+    assert "3 / 6 Tage diese Woche" in html
+    assert "2 Wochen in Folge" in html
+
+
+def test_streak_karte_null_wochen_zeigt_hinweistext():
+    montag = date(2026, 7, 20)
+    html = render_dashboard_html(
+        [], "token", None, training_days=0, today=montag,
+        week_training_days=0, streak_weeks=0,
+    )
+    assert "Noch keine Serie" in html
+    assert 'class="streak-flame is-cold"' in html
+
+
+def test_streak_karte_eine_woche_singular():
+    montag = date(2026, 7, 20)
+    html = render_dashboard_html(
+        [], "token", None, training_days=0, today=montag,
+        week_training_days=6, streak_weeks=1,
+    )
+    assert "1 Woche in Folge" in html
+    assert 'class="streak-flame is-cold"' not in html
+
+
+def test_ohne_week_training_days_keine_streak_karte():
+    montag = date(2026, 7, 20)
+    html = render_dashboard_html([], "token", None, training_days=0, today=montag)
+    assert 'class="streak-card"' not in html
+
+
 def test_verlauf_hat_csv_export_link():
     html = render_dashboard_html([], "mein-token", None, training_days=0)
     assert 'href="/dashboard/export.csv?token=mein-token" download' in html

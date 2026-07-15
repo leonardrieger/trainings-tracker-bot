@@ -16,6 +16,7 @@ from app.reminders import (
     TRAINING_PLAN,
     TRAINING_PLAN_SHORT,
     WEEKDAY_ABBR,
+    WEEKLY_TRAINING_TARGET,
     format_weight_delta,
     is_deload_week,
 )
@@ -113,6 +114,19 @@ _STYLE = """
   .day.today .d-plan { color: var(--ink); }
   .day.today .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin: .45rem auto 0; }
 
+  .streak-card { display: flex; align-items: center; gap: 1rem; margin: 1.4rem 0 0; }
+  .streak-flame { width: 38px; height: 38px; flex: 0 0 auto; }
+  .streak-flame.is-cold { filter: grayscale(1); opacity: .4; }
+  .streak-text .s-days {
+    font-size: clamp(1.4rem, 6vw, 1.7rem); font-weight: 300; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .streak-text .s-streak { color: var(--ink-dim); font-size: .85rem; margin-top: .2rem; }
+  .streak-flame .flame-outer, .streak-flame .flame-inner, .streak-flame .flame-core { transform-origin: bottom center; }
+  /* Glow statisch statt animiert: ein animierter drop-shadow-Filter würde die
+     Flamme in jedem Frame neu rastern (CPU/Akku), transform-Flackern reicht. */
+  .streak-flame:not(.is-cold) { filter: drop-shadow(0 0 5px rgba(216,166,87,.6)); }
+
   .today-log { margin-top: 2.1rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
   .today-log .micro-label { display: block; margin-bottom: .9rem; }
   .log-row { display: flex; align-items: baseline; justify-content: space-between; padding: .55rem 0; border-bottom: 1px solid var(--line); gap: 1rem; }
@@ -143,6 +157,22 @@ _STYLE = """
   .count-meta { font-size: .88rem; color: var(--ink-dim); margin: .35rem 0 0; }
   .count-meta .count-num { color: var(--ink); font-variant-numeric: tabular-nums; }
   .untracked-line { font-size: .82rem; color: var(--ink-mute); margin: 1rem 0 0; line-height: 1.5; }
+
+  .heatmap-wrap { margin: 0 0 1.7rem; overflow-x: auto; }
+  .heatmap-inner { display: inline-block; min-width: 100%; }
+  .heatmap-months { display: grid; grid-template-columns: repeat(26, 12px); gap: 3px; margin: 0 0 .3rem 22px; }
+  .heatmap-months span { font-size: .6rem; color: var(--ink-mute); text-transform: uppercase; letter-spacing: .04em; }
+  .heatmap-body { display: flex; gap: 4px; }
+  .heatmap-daylabels { display: grid; grid-template-rows: repeat(7, 12px); gap: 3px; width: 18px; }
+  .heatmap-daylabels span { font-size: .58rem; color: var(--ink-mute); line-height: 12px; }
+  .heatmap-grid {
+    display: grid; grid-template-rows: repeat(7, 12px); grid-template-columns: repeat(26, 12px);
+    grid-auto-flow: column; gap: 3px;
+  }
+  .heatmap-cell { width: 12px; height: 12px; border-radius: 3px; background: rgba(255,255,255,.05); }
+  .heatmap-cell.trained { background: var(--accent); opacity: .82; }
+  .heatmap-cell.today { box-shadow: 0 0 0 1.5px var(--accent); }
+  .heatmap-cell.future { visibility: hidden; }
 
   .activity { list-style: none; margin: 1.2rem 0 0; padding: 0; }
   .activity li { display: grid; grid-template-columns: auto 1fr auto auto; align-items: baseline; gap: .9rem; padding: .8rem 0; border-bottom: 1px solid var(--line); }
@@ -238,6 +268,22 @@ _STYLE = """
     @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     form.is-loading button[type="submit"]::after { animation: spin .7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .streak-flame:not(.is-cold) .flame-outer { animation: flicker-outer .9s ease-in-out infinite alternate; }
+    .streak-flame:not(.is-cold) .flame-inner { animation: flicker-inner 1.3s ease-in-out infinite alternate; }
+    .streak-flame:not(.is-cold) .flame-core { animation: flicker-core 1.1s ease-in-out infinite alternate; }
+    @keyframes flicker-outer {
+      from { transform: scaleY(1) skewX(-1deg); }
+      to { transform: scaleY(1.06) skewX(1.5deg); }
+    }
+    @keyframes flicker-inner {
+      from { transform: scaleY(1) skewX(1deg); }
+      to { transform: scaleY(1.09) skewX(-1.5deg); }
+    }
+    @keyframes flicker-core {
+      from { transform: scaleY(.98) skewX(-.5deg); }
+      to { transform: scaleY(1.05) skewX(.8deg); }
+    }
   }
 </style>
 """
@@ -340,6 +386,32 @@ def _exercise_datalist(exercise_aliases: dict[str, list[str]]) -> str:
 
 # ---------------------------------------------------------------- Heute-View
 
+_FLAME_SVG = """<svg class="streak-flame{cold_cls}" viewBox="0 0 32 40" aria-hidden="true">
+  <path class="flame-outer" fill="#d8a657" d="M16 39c8 0 12-5.5 12-12.5 0-6-3-9.5-4.8-13.7-1-2.3-1.4-4.7-1-8.3-4 2-7 6.7-6.4 11.3-2.3-1.6-3.6-4.3-3.6-7.6-3.6 3.3-6.2 8.6-6.2 13.8C6 33.5 8 39 16 39z"/>
+  <path class="flame-inner" fill="#f0c078" d="M16.5 36.5c5.4 0 8-3.7 8-8.3 0-4-2-6.6-3.4-9.3-.5 2-1.7 3.6-3.3 4.6.4-3.3-1-6.2-3.3-8-.4 2.6-1.7 4.7-3.6 6.2-1.6 1.3-2.7 3.5-2.7 6C8 33 11 36.5 16.5 36.5z"/>
+  <path class="flame-core" fill="#f8e3bb" d="M17 34.5c2.8 0 4.3-2.1 4.3-4.7 0-2-1.3-3.5-2.2-4.8-.4 1.4-1.2 2.4-2.3 3-.2-1.8-1.1-3.2-2.3-4-.1 1.6-.8 2.9-1.8 3.8-.8.7-1.3 1.9-1.3 3.1 0 2.6 1.8 3.6 5.6 3.6z"/>
+</svg>"""
+
+
+def _streak_card(week_training_days: int, streak_weeks: int) -> str:
+    cold = streak_weeks == 0 and week_training_days == 0
+    flame = _FLAME_SVG.format(cold_cls=" is-cold" if cold else "")
+    if streak_weeks == 0:
+        streak_text = "Noch keine Serie — diese Woche zählt!"
+    elif streak_weeks == 1:
+        streak_text = "1 Woche in Folge"
+    else:
+        streak_text = f"{streak_weeks} Wochen in Folge"
+    return (
+        '<div class="streak-card">'
+        f"{flame}"
+        '<div class="streak-text">'
+        f'<div class="s-days">{week_training_days} / {WEEKLY_TRAINING_TARGET} Tage diese Woche</div>'
+        f'<div class="s-streak">{_t(streak_text)}</div>'
+        "</div></div>"
+    )
+
+
 def _heute_view(
     encoded_token: str,
     today: date | None,
@@ -353,6 +425,8 @@ def _heute_view(
     last_sets: list[dict] | None = None,
     exercise_aliases: dict[str, list[str]] | None = None,
     session_only_exercises: set[str] | None = None,
+    week_training_days: int | None = None,
+    streak_weeks: int | None = None,
 ) -> str:
     exercise_aliases = exercise_aliases if exercise_aliases is not None else EXERCISE_ALIASES
     hidden_attr = "" if active else " hidden"
@@ -404,6 +478,9 @@ def _heute_view(
                 f'<div class="d-plan">{_t(plan_short[wd])}</div>{mark}</div>'
             )
         parts.append(f'<div class="week-strip">{"".join(cells)}</div>')
+
+        if week_training_days is not None:
+            parts.append(_streak_card(week_training_days, streak_weeks or 0))
 
         todays = [e for e in recent if e.get("logged_at", "")[:10] == today.isoformat()]
         rows = []
@@ -564,12 +641,64 @@ def _entry_edit_panel(e: dict, encoded_token: str) -> str:
     )
 
 
+_HEATMAP_WEEKS = 26
+_HEATMAP_DAYLABELS = {0: "Mo", 2: "Mi", 4: "Fr"}
+
+
+def _heatmap(heatmap_dates: set[str], today: date) -> str:
+    """GitHub-artige Kalender-Heatmap: 26 Wochen (Mo–So), älteste Woche links."""
+    current_week_monday = today - timedelta(days=today.weekday())
+    heatmap_start = current_week_monday - timedelta(weeks=_HEATMAP_WEEKS - 1)
+
+    month_labels = []
+    prev_month = None
+    for week in range(_HEATMAP_WEEKS):
+        week_monday = heatmap_start + timedelta(weeks=week)
+        if week_monday.month != prev_month:
+            month_labels.append(f'<span>{MONTH_ABBR[week_monday.month - 1]}</span>')
+            prev_month = week_monday.month
+        else:
+            month_labels.append("<span></span>")
+
+    daylabels = "".join(
+        f'<span>{_HEATMAP_DAYLABELS.get(row, "")}</span>' for row in range(7)
+    )
+
+    cells = []
+    for week in range(_HEATMAP_WEEKS):
+        week_monday = heatmap_start + timedelta(weeks=week)
+        for row in range(7):
+            day = week_monday + timedelta(days=row)
+            classes = ["heatmap-cell"]
+            if day > today:
+                classes.append("future")
+            else:
+                if day.isoformat() in heatmap_dates:
+                    classes.append("trained")
+                if day == today:
+                    classes.append("today")
+            cells.append(f'<div class="{" ".join(classes)}"></div>')
+
+    return (
+        '<div class="heatmap-wrap"><span class="micro-label">Letzte 6 Monate</span>'
+        '<div class="heatmap-inner">'
+        f'<div class="heatmap-months">{"".join(month_labels)}</div>'
+        '<div class="heatmap-body">'
+        f'<div class="heatmap-daylabels">{daylabels}</div>'
+        f'<div class="heatmap-grid">{"".join(cells)}</div>'
+        "</div></div></div>"
+    )
+
+
 def _verlauf_view(
     recent: list[dict],
     encoded_token: str,
     active: bool,
     session_only_exercises: set[str] | None = None,
+    heatmap_dates: set[str] | None = None,
+    today: date | None = None,
 ) -> str:
+    heatmap_html = _heatmap(heatmap_dates, today) if heatmap_dates and today is not None else ""
     items = []
     for e in recent:
         detail, done = _entry_detail(e, session_only_exercises)
@@ -584,6 +713,7 @@ def _verlauf_view(
     hidden_attr = "" if active else " hidden"
     return (
         f'<section class="view" id="view-verlauf"{hidden_attr}>'
+        f"{heatmap_html}"
         '<div class="view-head"><span class="micro-label">Letzte Aktivitäten</span></div>'
         f'<ul class="activity">{body}</ul>'
         f'<p class="export-line"><a class="undo" href="/dashboard/export.csv?token={encoded_token}" '
@@ -839,6 +969,9 @@ def render_dashboard_html(
     cardio_exercises: set[str] | None = None,
     session_only_exercises: set[str] | None = None,
     plan_sections: list[tuple[str, list[str]]] | None = None,
+    heatmap_dates: set[str] | None = None,
+    week_training_days: int | None = None,
+    streak_weeks: int | None = None,
 ) -> str:
     encoded_token = quote(token)
     summary = exercise_summary or {}
@@ -860,12 +993,15 @@ def render_dashboard_html(
     heute = _heute_view(
         encoded_token, today, week_value, week_number, trained_dates or set(), recent,
         plan_long, plan_short, view == "heute", last_sets, exercise_aliases, session_only_exercises,
+        week_training_days, streak_weeks,
     )
     fortschritt = _fortschritt_view(
         encoded_token, latest_weight, training_days, week_value, summary, view == "fortschritt",
         weight_delta, plan_sections, session_only_exercises,
     )
-    verlauf = _verlauf_view(recent, encoded_token, view == "verlauf", session_only_exercises)
+    verlauf = _verlauf_view(
+        recent, encoded_token, view == "verlauf", session_only_exercises, heatmap_dates, today,
+    )
     plan = _plan_view(encoded_token, plan_long, plan_short, view == "plan")
     uebungen = _uebungen_view(
         encoded_token, exercise_aliases, cardio_exercises, session_only_exercises, plan_sections,

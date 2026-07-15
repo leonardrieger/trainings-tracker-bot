@@ -27,6 +27,8 @@ from app.reminders import (
     should_send_reminder,
     should_send_weekly_summary,
     week_number_for,
+    week_streak,
+    weekly_day_counts,
     weekly_summary_text,
 )
 
@@ -397,6 +399,11 @@ def dashboard(token: str = "", msg: str = "", view: str = "heute") -> HTMLRespon
         week_number = week_number_for(today, start_date)
         week_start = today - timedelta(days=today.weekday())
         trained_dates = db.get_workout_dates_in_range(user_id, week_start, week_start + timedelta(days=6))
+        heatmap_start = (today - timedelta(weeks=25)) - timedelta(days=(today - timedelta(weeks=25)).weekday())
+        heatmap_dates = db.get_workout_dates_in_range(user_id, heatmap_start, today)
+        counts = weekly_day_counts(heatmap_dates, today, 26)
+        week_training_days = counts[0]
+        streak_weeks = week_streak(counts)
         plan_long, plan_short = db.get_training_plan()
         weight_delta = db.get_weight_change_in_range(user_id, today - timedelta(days=7), today)
         last_sets = db.get_last_sets(user_id)
@@ -407,6 +414,7 @@ def dashboard(token: str = "", msg: str = "", view: str = "heute") -> HTMLRespon
             weight_delta=weight_delta, last_sets=last_sets,
             exercise_aliases=aliases, cardio_exercises=cardio_exercises,
             session_only_exercises=session_only_exercises, plan_sections=plan_sections,
+            heatmap_dates=heatmap_dates, week_training_days=week_training_days, streak_weeks=streak_weeks,
         )
         return HTMLResponse(html)
     except Exception:

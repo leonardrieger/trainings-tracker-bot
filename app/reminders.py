@@ -5,7 +5,7 @@ kommen aus ``app.config`` und werden hier für Rückwärtskompatibilität re-exp
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from app.config import (
     DELOAD_END_WEEK,
@@ -86,6 +86,47 @@ def format_weight_delta(start: float, end: float) -> str:
     delta = end - start
     arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
     return f"{arrow} {abs(delta):.1f} kg"
+
+
+def weekly_day_counts(dates: set[str], today: date, weeks: int) -> list[int]:
+    """Gruppiert ISO-Datumsstrings in Montag-basierte Kalenderwochen.
+
+    Index 0 = laufende Woche, Index 1 = letzte Woche usw. Länge der Rückgabe
+    entspricht ``weeks``. Mehrere Einträge am selben Tag zählen als 1 Tag.
+    """
+    week_start = today - timedelta(days=today.weekday())
+    days_by_week: list[set[str]] = [set() for _ in range(weeks)]
+    for date_str in dates:
+        try:
+            d = date.fromisoformat(date_str)
+        except ValueError:
+            continue
+        d_monday = d - timedelta(days=d.weekday())
+        week_index = (week_start - d_monday).days // 7
+        if 0 <= week_index < weeks:
+            days_by_week[week_index].add(date_str)
+    return [len(days) for days in days_by_week]
+
+
+def week_streak(counts: list[int], target: int = WEEKLY_TRAINING_TARGET) -> int:
+    """Anzahl Wochen in Folge mit erreichtem Wochenziel.
+
+    Zählung beginnt bei den abgeschlossenen Wochen (Index 1 aufwärts), solange
+    das Ziel erreicht wurde. Die laufende Woche (Index 0) zählt zusätzlich +1,
+    wenn sie das Ziel bereits erreicht hat, bricht die Serie aber nicht, wenn
+    sie es noch nicht erreicht hat.
+    """
+    if not counts:
+        return 0
+    streak = 0
+    for count in counts[1:]:
+        if count >= target:
+            streak += 1
+        else:
+            break
+    if counts[0] >= target:
+        streak += 1
+    return streak
 
 
 def weekly_summary_text(training_days: int, weight_change: tuple[float, float] | None) -> str:

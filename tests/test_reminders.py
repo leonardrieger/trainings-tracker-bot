@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.reminders import (
     TRAINING_PLAN,
+    WEEKLY_TRAINING_TARGET,
     format_weight_delta,
     is_deload_week,
     klimmzug_phase_hint,
@@ -13,6 +14,8 @@ from app.reminders import (
     should_send_reminder,
     should_send_weekly_summary,
     week_number_for,
+    week_streak,
+    weekly_day_counts,
     weekly_summary_text,
 )
 
@@ -164,3 +167,54 @@ def test_weekly_summary_text_mit_gewichtszunahme():
     text = weekly_summary_text(training_days=6, weight_change=(83.0, 83.5))
     assert "↑" in text
     assert "0.5 kg" in text
+
+
+# ------------------------------------------------------------- weekly_day_counts
+
+def test_weekly_day_counts_leeres_set():
+    montag = date(2026, 7, 20)
+    assert weekly_day_counts(set(), montag, 3) == [0, 0, 0]
+
+
+def test_weekly_day_counts_ueber_wochengrenzen():
+    montag = date(2026, 7, 20)
+    dates = {"2026-07-19", "2026-07-20"}  # Sonntag letzte Woche, Montag laufende Woche
+    counts = weekly_day_counts(dates, montag, 3)
+    assert counts == [1, 1, 0]
+
+
+def test_weekly_day_counts_wochenwechsel_montag():
+    montag = date(2026, 7, 20)
+    counts = weekly_day_counts({"2026-07-13"}, montag, 2)
+    assert counts == [0, 1]
+
+
+def test_weekly_day_counts_mehrere_eintraege_selber_tag_zaehlen_als_ein_tag():
+    # dates ist bereits ein Set aus ISO-Datumsstrings (Duplikate an einem Tag
+    # sind darin unmöglich) — der Zähler darf trotz mehrerer Logs pro Tag
+    # nicht über 1 pro Tag hinausgehen.
+    montag = date(2026, 7, 20)
+    dates = {"2026-07-20"}
+    counts = weekly_day_counts(dates, montag, 1)
+    assert counts == [1]
+
+
+# ----------------------------------------------------------------- week_streak
+
+def test_week_streak_leere_liste():
+    assert week_streak([]) == 0
+
+
+def test_week_streak_laufende_woche_unter_ziel_bricht_serie_nicht():
+    counts = [1, 6, 6, 6]
+    assert week_streak(counts, target=WEEKLY_TRAINING_TARGET) == 3
+
+
+def test_week_streak_laufende_woche_ueber_ziel_zaehlt_plus_eins():
+    counts = [6, 6, 6]
+    assert week_streak(counts, target=WEEKLY_TRAINING_TARGET) == 3
+
+
+def test_week_streak_luecke_in_abgeschlossenen_wochen_beendet_serie():
+    counts = [0, 6, 2, 6, 6]
+    assert week_streak(counts, target=WEEKLY_TRAINING_TARGET) == 1
