@@ -40,12 +40,12 @@ JSON-Felder:
 """
 
 
-def _system_prompt() -> str:
-    names = ", ".join(sorted(EXERCISE_ALIASES.keys()))
+def _system_prompt(aliases: dict[str, list[str]] | None = None) -> str:
+    names = ", ".join(sorted((aliases if aliases is not None else EXERCISE_ALIASES).keys()))
     return _SYSTEM_PROMPT_TEMPLATE.format(exercises=names)
 
 
-def _call_groq(text: str) -> dict:
+def _call_groq(text: str, aliases: dict[str, list[str]] | None = None) -> dict:
     api_key = os.environ["GROQ_API_KEY"]
     model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
     response = httpx.post(
@@ -54,7 +54,7 @@ def _call_groq(text: str) -> dict:
         json={
             "model": model,
             "messages": [
-                {"role": "system", "content": _system_prompt()},
+                {"role": "system", "content": _system_prompt(aliases)},
                 {"role": "user", "content": text},
             ],
             "response_format": {"type": "json_object"},
@@ -72,11 +72,17 @@ def _as_number(data: dict, key: str) -> float | None:
     return value if isinstance(value, (int, float)) else None
 
 
-def parse_message(text: str) -> ParsedWorkout:
+def parse_message(
+    text: str,
+    aliases: dict[str, list[str]] | None = None,
+    cardio_exercises: set[str] | None = None,
+) -> ParsedWorkout:
+    aliases = aliases if aliases is not None else EXERCISE_ALIASES
+    cardio_exercises = cardio_exercises if cardio_exercises is not None else CARDIO_EXERCISES
     try:
-        data = _call_groq(text)
+        data = _call_groq(text, aliases)
     except Exception:
-        return parse_message_regex(text)
+        return parse_message_regex(text, aliases, cardio_exercises)
 
     weight_kg = _as_number(data, "weight_kg")
 
@@ -91,10 +97,10 @@ def parse_message(text: str) -> ParsedWorkout:
         )
 
     exercise = data.get("exercise")
-    if exercise not in EXERCISE_ALIASES:
+    if exercise not in aliases:
         exercise = None
 
-    is_cardio = bool(data.get("is_cardio")) or (exercise in CARDIO_EXERCISES if exercise else False)
+    is_cardio = bool(data.get("is_cardio")) or (exercise in cardio_exercises if exercise else False)
 
     sets = _as_number(data, "sets")
     reps = _as_number(data, "reps")

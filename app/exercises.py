@@ -96,13 +96,14 @@ PLAN_SECTIONS: list[tuple[str, list[str]]] = [
 ]
 
 
-def match_exercise(text: str) -> str | None:
+def match_exercise(text: str, aliases: dict[str, list[str]] | None = None) -> str | None:
     """Findet die längste (spezifischste) passende Übung im Text."""
+    aliases = aliases if aliases is not None else EXERCISE_ALIASES
     lowered = text.lower()
     best_match: str | None = None
     best_len = 0
-    for canonical, aliases in EXERCISE_ALIASES.items():
-        for alias in aliases:
+    for canonical, alias_list in aliases.items():
+        for alias in alias_list:
             if alias in lowered and len(alias) > best_len:
                 best_match = canonical
                 best_len = len(alias)

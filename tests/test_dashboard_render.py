@@ -173,11 +173,36 @@ def test_log_formular_und_undo_button_vorhanden():
     assert 'action="/dashboard/undo?token=mein-token"' in html
 
 
-def test_vier_tabs_und_ansichten_vorhanden():
+def test_fuenf_tabs_und_ansichten_vorhanden():
     html = render_dashboard_html([], "token", None, training_days=0)
-    for view_id in ["view-heute", "view-fortschritt", "view-verlauf", "view-plan"]:
+    for view_id in ["view-heute", "view-fortschritt", "view-verlauf", "view-plan", "view-uebungen"]:
         assert view_id in html
-    assert html.count('class="tab"') + html.count('class="tab active"') == 4
+    assert html.count('class="tab"') + html.count('class="tab active"') == 5
+
+
+def test_uebungen_tab_zeigt_eine_form_je_uebung():
+    exercise_aliases = {"Bankdrücken": ["bankdrücken", "bench"], "Laufen": ["laufen"]}
+    html = render_dashboard_html(
+        [], "token", None, training_days=0,
+        exercise_aliases=exercise_aliases, cardio_exercises={"Laufen"},
+        session_only_exercises=set(), plan_sections=[("Tag A – Beine & Druck", ["Bankdrücken"])],
+    )
+    assert html.count('action="/dashboard/exercises/update?token=token"') == 2
+    assert 'value="Bankdrücken"' in html
+    assert 'value="bankdrücken, bench"' in html
+    assert 'action="/dashboard/exercises/add?token=token"' in html
+    assert 'action="/dashboard/exercises/delete?token=token"' in html
+
+
+def test_uebungen_tab_vorbelegte_sektion_und_flags():
+    exercise_aliases = {"Laufen": ["laufen"]}
+    html = render_dashboard_html(
+        [], "token", None, training_days=0,
+        exercise_aliases=exercise_aliases, cardio_exercises={"Laufen"},
+        session_only_exercises=set(), plan_sections=[("Ausdauer", ["Laufen"])],
+    )
+    assert '<option value="Ausdauer" selected>Ausdauer</option>' in html
+    assert 'name="is_cardio" checked' in html
 
 
 def test_plan_tab_zeigt_alle_wochentage_und_werte():

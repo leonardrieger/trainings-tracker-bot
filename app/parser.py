@@ -72,7 +72,12 @@ def _to_float(s: str) -> float:
     return float(s.replace(",", "."))
 
 
-def parse_message(text: str) -> ParsedWorkout:
+def parse_message(
+    text: str,
+    aliases: dict[str, list[str]] | None = None,
+    cardio_exercises: set[str] | None = None,
+) -> ParsedWorkout:
+    cardio_exercises = cardio_exercises if cardio_exercises is not None else CARDIO_EXERCISES
     weight_match = _WEIGHT_RE.search(text)
 
     if _BODYWEIGHT_RE.search(text) and weight_match:
@@ -85,8 +90,8 @@ def parse_message(text: str) -> ParsedWorkout:
             record_type="bodyweight",
         )
 
-    exercise = match_exercise(text)
-    is_cardio = exercise in CARDIO_EXERCISES if exercise else False
+    exercise = match_exercise(text, aliases)
+    is_cardio = exercise in cardio_exercises if exercise else False
 
     distance_match = _DISTANCE_RE.search(text)
     duration_match = _DURATION_RE.search(text)

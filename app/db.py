@@ -9,12 +9,15 @@ from functools import lru_cache
 from supabase import Client, create_client
 
 from app.config import TRAINING_PLAN, TRAINING_PLAN_SHORT
+from app.exercises import CARDIO_EXERCISES, EXERCISE_ALIASES, PLAN_SECTIONS, SESSION_ONLY_EXERCISES
 from app.parser import ParsedWorkout
 
 TABLE = "workout_logs"
 BODY_WEIGHT_TABLE = "body_weight_logs"
 STATE_TABLE = "bot_state"
+EXERCISES_TABLE = "exercises"
 TRAINING_PLAN_STATE_KEY = "training_plan"
+_SECTION_ORDER = [title for title, _ in PLAN_SECTIONS]
 
 
 @lru_cache
@@ -314,3 +317,119 @@ def set_training_plan(long_plan: dict[int, str], short_plan: dict[int, str]) -> 
 
 def reset_training_plan() -> None:
     delete_state(TRAINING_PLAN_STATE_KEY)
+
+
+def _default_exercise_rows() -> list[dict]:
+    """Rekonstruiert die heutigen app.exercises-Defaults als exercises-Tabellenzeilen."""
+    section_by_name: dict[str, str] = {}
+    order_by_name: dict[str, int] = {}
+    order = 0
+    for section_title, names in PLAN_SECTIONS:
+        for name in names:
+            section_by_name[name] = section_title
+            order_by_name[name] = order
+            order += 1
+    for name in EXERCISE_ALIASES:
+        if name not in order_by_name:
+            order_by_name[name] = order
+            order += 1
+
+    return [
+        {
+            "name": name,
+            "aliases": list(aliases),
+            "section": section_by_name.get(name),
+            "is_cardio": name in CARDIO_EXERCISES,
+            "is_session_only": name in SESSION_ONLY_EXERCISES,
+            "sort_order": order_by_name[name],
+        }
+        for name, aliases in EXERCISE_ALIASES.items()
+    ]
+
+
+def _seed_exercises_if_empty() -> None:
+    """Befüllt die exercises-Tabelle einmalig mit den Python-Defaults, falls leer -
+    verhindert, dass ein erster Einzel-Edit alle anderen Übungen unsichtbar macht."""
+    existing = get_client().table(EXERCISES_TABLE).select("id").limit(1).execute()
+    if existing.data:
+        return
+    rows = _default_exercise_rows()
+    if rows:
+        get_client().table(EXERCISES_TABLE).insert(rows).execute()
+
+
+def _row_to_catalog(
+    rows: list[dict],
+) -> tuple[dict[str, list[str]], set[str], set[str], list[tuple[str, list[str]]]]:
+    rows_sorted = sorted(rows, key=lambda r: r["sort_order"])
+    aliases = {r["name"]: list(r["aliases"]) for r in rows_sorted}
+    cardio = {r["name"] for r in rows_sorted if r["is_cardio"]}
+    session_only = {r["name"] for r in rows_sorted if r["is_session_only"]}
+
+    grouped: dict[str, list[str]] = {title: [] for title in _SECTION_ORDER}
+    for r in rows_sorted:
+        if r["section"] in grouped:
+            grouped[r["section"]].append(r["name"])
+    plan_sections = [(title, names) for title, names in grouped.items() if names]
+    return aliases, cardio, session_only, plan_sections
+
+
+def get_exercise_catalog() -> tuple[dict[str, list[str]], set[str], set[str], list[tuple[str, list[str]]]]:
+    """Aktueller Übungs-Katalog: DB-Override falls vorhanden, sonst app.exercises-Default."""
+    rows = get_client().table(EXERCISES_TABLE).select("*").execute().data
+    if not rows:
+        return dict(EXERCISE_ALIASES), set(CARDIO_EXERCISES), set(SESSION_ONLY_EXERCISES), list(PLAN_SECTIONS)
+    return _row_to_catalog(rows)
+
+
+def _next_exercise_sort_order() -> int:
+    rows = get_client().table(EXERCISES_TABLE).select("id").execute().data
+    return len(rows)
+
+
+def add_exercise(name: str, aliases: list[str], section: str | None, is_cardio: bool, is_session_only: bool) -> None:
+    _seed_exercises_if_empty()
+    get_client().table(EXERCISES_TABLE).insert(
+        {
+            "name": name,
+            "aliases": aliases,
+            "section": section,
+            "is_cardio": is_cardio,
+            "is_session_only": is_session_only,
+            "sort_order": _next_exercise_sort_order(),
+        }
+    ).execute()
+
+
+def update_exercise(
+    telegram_user_id: int,
+    original_name: str,
+    new_name: str,
+    aliases: list[str],
+    section: str | None,
+    is_cardio: bool,
+    is_session_only: bool,
+) -> None:
+    _seed_exercises_if_empty()
+    if new_name != original_name:
+        # Historie zuerst umschreiben - schlägt das fehl, bleibt der Katalog unverändert
+        # und es gibt keine verwaisten workout_logs-Zeilen.
+        get_client().table(TABLE).update({"exercise": new_name}).eq(
+            "telegram_user_id", telegram_user_id
+        ).eq("exercise", original_name).execute()
+    get_client().table(EXERCISES_TABLE).update(
+        {
+            "name": new_name,
+            "aliases": aliases,
+            "section": section,
+            "is_cardio": is_cardio,
+            "is_session_only": is_session_only,
+        }
+    ).eq("name", original_name).execute()
+
+
+def delete_exercise(name: str) -> None:
+    """Löscht nur den Katalog-Eintrag - workout_logs bleibt unangetastet, die
+    Dashboard-"Sonstiges"-Gruppe zeigt bisherige Einträge weiterhin an."""
+    _seed_exercises_if_empty()
+    get_client().table(EXERCISES_TABLE).delete().eq("name", name).execute()

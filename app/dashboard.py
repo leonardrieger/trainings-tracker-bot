@@ -10,7 +10,7 @@ import html
 from datetime import date, timedelta
 
 from app.config import TARGET_WEIGHT_MAX, TARGET_WEIGHT_MIN
-from app.exercises import EXERCISE_ALIASES, PLAN_SECTIONS, SESSION_ONLY_EXERCISES
+from app.exercises import CARDIO_EXERCISES, EXERCISE_ALIASES, PLAN_SECTIONS, SESSION_ONLY_EXERCISES
 from app.reminders import (
     PROGRAM_LENGTH_WEEKS,
     TRAINING_PLAN,
@@ -26,6 +26,7 @@ _max = f"{TARGET_WEIGHT_MAX:g}".replace(".", ",")
 TARGET_WEIGHT_RANGE = f"{_min}–{_max} kg"
 
 WEEKDAY_FULL = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+_SECTION_TITLES = [title for title, _ in PLAN_SECTIONS]
 MONTH_FULL = [
     "Januar", "Februar", "März", "April", "Mai", "Juni",
     "Juli", "August", "September", "Oktober", "November", "Dezember",
@@ -158,12 +159,30 @@ _STYLE = """
   .plan-save:active { transform: scale(.99); }
   .plan-reset { margin-top: 1rem; text-align: center; }
 
+  .exercise-row { margin: 0 0 1.5rem; padding-bottom: 1.3rem; border-bottom: 1px solid var(--line); }
+  .exercise-row input[type="text"], .exercise-row select {
+    display: block; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: .7rem .85rem; color: var(--ink); font-size: .9rem; font-family: inherit; margin-bottom: .5rem;
+  }
+  .exercise-row select { appearance: none; }
+  .exercise-row label {
+    display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; color: var(--ink-dim);
+    margin: 0 1rem .6rem 0;
+  }
+  .exercise-save {
+    display: block; width: 100%; margin-top: .3rem; border: none; background: var(--ink); color: var(--ground);
+    border-radius: var(--radius); padding: .75rem; font-size: .9rem; font-family: inherit; cursor: pointer;
+  }
+  .exercise-save:active { transform: scale(.99); }
+  .exercise-delete-form { margin-top: .5rem; text-align: right; }
+  .exercise-add .plan-day { display: block; margin-bottom: .7rem; }
+
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px); background: rgba(14,15,17,.82); backdrop-filter: blur(14px);
     border-top: 1px solid var(--line); z-index: 10;
   }
-  .tabbar-inner { max-width: 460px; margin: 0 auto; height: var(--nav-h); display: grid; grid-template-columns: repeat(4, 1fr); }
+  .tabbar-inner { max-width: 460px; margin: 0 auto; height: var(--nav-h); display: grid; grid-template-columns: repeat(5, 1fr); }
   .tab { background: none; border: none; cursor: pointer; color: var(--ink-mute); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .25rem; font-family: inherit; font-size: .68rem; }
   .tab svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.6; }
   .tab.active { color: var(--accent); }
@@ -192,8 +211,9 @@ def _num(value) -> str:
     return f"{value:g}".replace(".", ",")
 
 
-def _entry_detail(entry: dict) -> tuple[str, bool]:
+def _entry_detail(entry: dict, session_only_exercises: set[str] | None = None) -> tuple[str, bool]:
     """Detail-Text + Flag, ob es ein 'absolviert'-Eintrag (grün) ist."""
+    session_only_exercises = session_only_exercises if session_only_exercises is not None else SESSION_ONLY_EXERCISES
     if entry.get("type") == "bodyweight":
         return f"{_num(entry.get('weight_kg', 0))} kg", False
 
@@ -207,7 +227,7 @@ def _entry_detail(entry: dict) -> tuple[str, bool]:
         return " · ".join(parts), False
 
     sets, reps, weight = entry.get("sets"), entry.get("reps"), entry.get("weight_kg")
-    if exercise in SESSION_ONLY_EXERCISES or (sets is None and reps is None and weight is None):
+    if exercise in session_only_exercises or (sets is None and reps is None and weight is None):
         return "✓ absolviert", True
 
     if sets is not None and reps is not None:
@@ -247,12 +267,12 @@ def _hero_parts(plan: str) -> tuple[str, str]:
     return plan.strip(), ""
 
 
-def _repeat_chips(last_sets: list[dict]) -> str:
+def _repeat_chips(last_sets: list[dict], session_only_exercises: set[str] | None = None) -> str:
     if not last_sets:
         return ""
     chips = []
     for entry in last_sets:
-        detail, _ = _entry_detail(entry)
+        detail, _ = _entry_detail(entry, session_only_exercises)
         label = f"{_entry_name(entry)} · {detail}"
         chips.append(
             f'<button type="button" class="chip" data-fill="{_attr(entry["raw_text"])}">{_t(label)}</button>'
@@ -263,8 +283,8 @@ def _repeat_chips(last_sets: list[dict]) -> str:
     )
 
 
-def _exercise_datalist() -> str:
-    options = "".join(f'<option value="{_attr(name)}">' for name in sorted(EXERCISE_ALIASES))
+def _exercise_datalist(exercise_aliases: dict[str, list[str]]) -> str:
+    options = "".join(f'<option value="{_attr(name)}">' for name in sorted(exercise_aliases))
     return f'<datalist id="exercise-names">{options}</datalist>'
 
 
@@ -282,7 +302,10 @@ def _heute_view(
     plan_short: dict[int, str],
     active: bool,
     last_sets: list[dict] | None = None,
+    exercise_aliases: dict[str, list[str]] | None = None,
+    session_only_exercises: set[str] | None = None,
 ) -> str:
+    exercise_aliases = exercise_aliases if exercise_aliases is not None else EXERCISE_ALIASES
     hidden_attr = "" if active else " hidden"
     parts = [f'<section class="view" id="view-heute"{hidden_attr}>']
 
@@ -302,7 +325,7 @@ def _heute_view(
             '<div class="note">📉 Deload-Woche (6–8): diese Woche ~60 % Gewicht, halbe Sätze einplanen.</div>'
         )
 
-    parts.append(_repeat_chips(last_sets or []))
+    parts.append(_repeat_chips(last_sets or [], session_only_exercises))
 
     parts.append(
         f'<form class="quick" method="post" action="/dashboard/log?token={encoded_token}">'
@@ -314,7 +337,7 @@ def _heute_view(
         f'<form class="undo-form" method="post" action="/dashboard/undo?token={encoded_token}">'
         '<button type="submit" class="undo">↩ Letzten Eintrag rückgängig</button>'
         "</form>"
-        f"{_exercise_datalist()}"
+        f"{_exercise_datalist(exercise_aliases)}"
     )
     if flash:
         parts.append(f'<div class="flash">{_t(flash)}</div>')
@@ -338,7 +361,7 @@ def _heute_view(
         todays = [e for e in recent if e.get("logged_at", "")[:10] == today.isoformat()]
         rows = []
         for e in todays:
-            detail, done = _entry_detail(e)
+            detail, done = _entry_detail(e, session_only_exercises)
             cls = "l-detail done" if done else "l-detail"
             rows.append(
                 f'<div class="log-row"><span class="l-name">{_t(_entry_name(e))}</span>'
@@ -369,7 +392,10 @@ def _fortschritt_view(
     summary: dict,
     active: bool,
     weight_delta: tuple[float, float] | None = None,
+    plan_sections: list[tuple[str, list[str]]] | None = None,
+    session_only_exercises: set[str] | None = None,
 ) -> str:
+    plan_sections = plan_sections if plan_sections is not None else PLAN_SECTIONS
     weight_val = _num(latest_weight["weight_kg"]) if latest_weight else "–"
     hidden_attr = "" if active else " hidden"
     parts = [
@@ -396,26 +422,33 @@ def _fortschritt_view(
     parts.append("</div>")
 
     covered: set[str] = set()
-    for title, section_exercises in PLAN_SECTIONS:
+    for title, section_exercises in plan_sections:
         covered.update(section_exercises)
-        parts.append(_section(title, section_exercises, summary, encoded_token))
+        parts.append(_section(title, section_exercises, summary, encoded_token, session_only_exercises))
 
     extra = sorted(set(summary) - covered)
     if extra:
-        parts.append(_section("Sonstiges", extra, summary, encoded_token))
+        parts.append(_section("Sonstiges", extra, summary, encoded_token, session_only_exercises))
 
     parts.append("</section>")
     return "".join(parts)
 
 
-def _section(title: str, exercises: list[str], summary: dict, encoded_token: str) -> str:
+def _section(
+    title: str,
+    exercises: list[str],
+    summary: dict,
+    encoded_token: str,
+    session_only_exercises: set[str] | None = None,
+) -> str:
+    session_only_exercises = session_only_exercises if session_only_exercises is not None else SESSION_ONLY_EXERCISES
     tracked = [e for e in exercises if e in summary]
     untracked = [e for e in exercises if e not in summary]
 
     parts = [f'<span class="micro-label section-label">{_t(title)}</span>']
     cards = []
     for ex in tracked:
-        if ex in SESSION_ONLY_EXERCISES:
+        if ex in session_only_exercises:
             info = summary[ex]
             cards.append(
                 f'<div class="mini-card"><h3>{_t(ex)}</h3>'
@@ -437,10 +470,10 @@ def _section(title: str, exercises: list[str], summary: dict, encoded_token: str
 
 # ------------------------------------------------------------- Verlauf-View
 
-def _verlauf_view(recent: list[dict], active: bool) -> str:
+def _verlauf_view(recent: list[dict], active: bool, session_only_exercises: set[str] | None = None) -> str:
     items = []
     for e in recent:
-        detail, done = _entry_detail(e)
+        detail, done = _entry_detail(e, session_only_exercises)
         cls = "a-detail done" if done else "a-detail"
         items.append(
             f'<li><span class="a-date">{_short_date(e["logged_at"])}</span>'
@@ -484,6 +517,76 @@ def _plan_view(encoded_token: str, plan_long: dict[int, str], plan_short: dict[i
     )
 
 
+# ------------------------------------------------------------- Übungen-View
+
+def _section_select(name_attr: str, selected: str) -> str:
+    options = ['<option value="">— keine —</option>']
+    for title in _SECTION_TITLES:
+        sel = " selected" if title == selected else ""
+        options.append(f'<option value="{_attr(title)}"{sel}>{_t(title)}</option>')
+    return f'<select name="{name_attr}" aria-label="Tag">{"".join(options)}</select>'
+
+
+def _uebungen_view(
+    encoded_token: str,
+    exercise_aliases: dict[str, list[str]],
+    cardio_exercises: set[str],
+    session_only_exercises: set[str],
+    plan_sections: list[tuple[str, list[str]]],
+    active: bool,
+) -> str:
+    section_by_name: dict[str, str] = {}
+    for title, names in plan_sections:
+        for name in names:
+            section_by_name[name] = title
+
+    rows = []
+    for name in sorted(exercise_aliases):
+        aliases_text = ", ".join(exercise_aliases[name])
+        cardio_checked = " checked" if name in cardio_exercises else ""
+        session_checked = " checked" if name in session_only_exercises else ""
+        rows.append(
+            '<div class="exercise-row">'
+            f'<form method="post" action="/dashboard/exercises/update?token={encoded_token}">'
+            f'<input type="hidden" name="original_name" value="{_attr(name)}">'
+            f'<input type="text" name="name" value="{_attr(name)}" aria-label="Name" required>'
+            f'<input type="text" name="aliases" value="{_attr(aliases_text)}" '
+            'aria-label="Aliase (kommagetrennt)" placeholder="Aliase, kommagetrennt">'
+            f'{_section_select("section", section_by_name.get(name, ""))}'
+            f'<label><input type="checkbox" name="is_cardio"{cardio_checked}> Cardio</label>'
+            f'<label><input type="checkbox" name="is_session_only"{session_checked}> Ohne Zahlen (Session)</label>'
+            '<button type="submit" class="exercise-save">Speichern</button>'
+            "</form>"
+            f'<div class="exercise-delete-form"><form method="post" '
+            f'action="/dashboard/exercises/delete?token={encoded_token}">'
+            f'<input type="hidden" name="name" value="{_attr(name)}">'
+            '<button type="submit" class="undo">🗑 Löschen</button>'
+            "</form></div>"
+            "</div>"
+        )
+
+    add_form = (
+        '<div class="exercise-row exercise-add"><span class="plan-day">Neue Übung</span>'
+        f'<form method="post" action="/dashboard/exercises/add?token={encoded_token}">'
+        '<input type="text" name="name" aria-label="Name" placeholder="Name" required>'
+        '<input type="text" name="aliases" aria-label="Aliase (kommagetrennt)" '
+        'placeholder="Aliase, kommagetrennt (optional)">'
+        f'{_section_select("section", "")}'
+        '<label><input type="checkbox" name="is_cardio"> Cardio</label>'
+        '<label><input type="checkbox" name="is_session_only"> Ohne Zahlen (Session)</label>'
+        '<button type="submit" class="exercise-save">Hinzufügen</button>'
+        "</form></div>"
+    )
+
+    hidden_attr = "" if active else " hidden"
+    return (
+        f'<section class="view" id="view-uebungen"{hidden_attr}>'
+        '<div class="view-head"><span class="micro-label">Übungen verwalten</span></div>'
+        f'{"".join(rows)}{add_form}'
+        "</section>"
+    )
+
+
 _TABS = [
     (
         "heute", "Heute",
@@ -492,6 +595,7 @@ _TABS = [
     ("fortschritt", "Fortschritt", '<path d="M4 19V5M4 19h16M8 15l3.5-4 3 2.5L20 8"/>'),
     ("verlauf", "Verlauf", '<path d="M4 6h16M4 12h16M4 18h10"/>'),
     ("plan", "Plan", '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+    ("uebungen", "Übungen", '<rect x="2" y="10" width="3" height="4" rx="1"/><rect x="19" y="10" width="3" height="4" rx="1"/><path d="M5 12h14"/>'),
 ]
 
 
@@ -505,7 +609,10 @@ def _tabbar(view: str) -> str:
 
 _SCRIPT = """
 <script>
-  var views = { heute: "view-heute", fortschritt: "view-fortschritt", verlauf: "view-verlauf", plan: "view-plan" };
+  var views = {
+    heute: "view-heute", fortschritt: "view-fortschritt", verlauf: "view-verlauf",
+    plan: "view-plan", uebungen: "view-uebungen"
+  };
   document.querySelectorAll(".tab").forEach(function (t) {
     t.addEventListener("click", function () {
       var v = t.dataset.view;
@@ -526,7 +633,7 @@ _SCRIPT = """
 """
 
 
-_VIEWS = {"heute", "fortschritt", "verlauf", "plan"}
+_VIEWS = {"heute", "fortschritt", "verlauf", "plan", "uebungen"}
 
 
 def render_dashboard_html(
@@ -544,11 +651,19 @@ def render_dashboard_html(
     view: str = "heute",
     weight_delta: tuple[float, float] | None = None,
     last_sets: list[dict] | None = None,
+    exercise_aliases: dict[str, list[str]] | None = None,
+    cardio_exercises: set[str] | None = None,
+    session_only_exercises: set[str] | None = None,
+    plan_sections: list[tuple[str, list[str]]] | None = None,
 ) -> str:
     encoded_token = quote(token)
     summary = exercise_summary or {}
     plan_long = plan_long if plan_long is not None else TRAINING_PLAN
     plan_short = plan_short if plan_short is not None else TRAINING_PLAN_SHORT
+    exercise_aliases = exercise_aliases if exercise_aliases is not None else EXERCISE_ALIASES
+    cardio_exercises = cardio_exercises if cardio_exercises is not None else CARDIO_EXERCISES
+    session_only_exercises = session_only_exercises if session_only_exercises is not None else SESSION_ONLY_EXERCISES
+    plan_sections = plan_sections if plan_sections is not None else PLAN_SECTIONS
     view = view if view in _VIEWS else "heute"
 
     if week_number is None:
@@ -560,14 +675,18 @@ def render_dashboard_html(
 
     heute = _heute_view(
         encoded_token, today, week_value, week_number, trained_dates or set(), recent, flash,
-        plan_long, plan_short, view == "heute", last_sets,
+        plan_long, plan_short, view == "heute", last_sets, exercise_aliases, session_only_exercises,
     )
     fortschritt = _fortschritt_view(
         encoded_token, latest_weight, training_days, week_value, summary, view == "fortschritt",
-        weight_delta,
+        weight_delta, plan_sections, session_only_exercises,
     )
-    verlauf = _verlauf_view(recent, view == "verlauf")
+    verlauf = _verlauf_view(recent, view == "verlauf", session_only_exercises)
     plan = _plan_view(encoded_token, plan_long, plan_short, view == "plan")
+    uebungen = _uebungen_view(
+        encoded_token, exercise_aliases, cardio_exercises, session_only_exercises, plan_sections,
+        view == "uebungen",
+    )
 
     return f"""<!doctype html>
 <html lang="de">
@@ -588,6 +707,7 @@ def render_dashboard_html(
     {fortschritt}
     {verlauf}
     {plan}
+    {uebungen}
     {_tabbar(view)}
   </div>
   {_SCRIPT}

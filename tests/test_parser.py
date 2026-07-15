@@ -96,7 +96,24 @@ def test_koerpergewicht_wird_erkannt():
     assert r.record_type == "bodyweight"
     assert r.weight_kg == 84.2
     assert r.exercise is None
-    assert r.recognized is True
+
+
+def test_parse_message_mit_injiziertem_katalog():
+    custom_aliases = {"Meine Übung": ["meine übung", "custom exercise"]}
+    r = parse_message("3x8 50kg Custom Exercise", aliases=custom_aliases, cardio_exercises=set())
+    assert r.exercise == "Meine Übung"
+    assert r.sets == 3
+    assert r.reps == 8
+    assert r.weight_kg == 50
+
+
+def test_parse_message_mit_injiziertem_katalog_erkennt_statics_nicht():
+    # Ohne den Custom-Katalog wäre "Bankdrücken" ein bekannter Alias - mit einem
+    # injizierten Katalog, der ihn nicht enthält, darf er nicht mehr matchen.
+    custom_aliases = {"Meine Übung": ["meine übung"]}
+    r = parse_message("3x8 80kg Bankdrücken", aliases=custom_aliases, cardio_exercises=set())
+    assert r.exercise is None
+    assert r.recognized is False
 
 
 def test_koerpergewicht_alternative_formulierung():

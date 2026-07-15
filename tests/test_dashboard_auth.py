@@ -232,6 +232,164 @@ def test_dashboard_plan_reset_bei_db_fehler_redirect_statt_500(monkeypatch):
     assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
 
 
+def test_dashboard_exercises_add_ohne_token_401():
+    r = client.post("/dashboard/exercises/add", data={"name": "Neue Übung"})
+    assert r.status_code == 401
+
+
+def test_dashboard_exercises_add_erfolgsfall(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.add_exercise") as add:
+        r = client.post(
+            "/dashboard/exercises/add?token=richtig",
+            data={"name": "Neue Übung", "aliases": "neue übung, custom", "section": "Ausdauer", "is_cardio": "on"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    add.assert_called_once_with("Neue Übung", ["neue übung", "custom"], "Ausdauer", True, False)
+    assert "view=uebungen" in r.headers["location"]
+    assert "hinzugef" in r.headers["location"]
+
+
+def test_dashboard_exercises_add_leerer_alias_faellt_auf_namen_zurueck(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.add_exercise") as add:
+        client.post(
+            "/dashboard/exercises/add?token=richtig",
+            data={"name": "Neue Übung", "aliases": ""},
+            follow_redirects=False,
+        )
+    add.assert_called_once_with("Neue Übung", ["neue übung"], None, False, False)
+
+
+def test_dashboard_exercises_add_session_only_erzwingt_cardio(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.add_exercise") as add:
+        client.post(
+            "/dashboard/exercises/add?token=richtig",
+            data={"name": "Sparring 2", "is_session_only": "on"},
+            follow_redirects=False,
+        )
+    args = add.call_args.args
+    assert args[3] is True  # is_cardio
+    assert args[4] is True  # is_session_only
+
+
+def test_dashboard_exercises_add_leerer_name_wird_abgelehnt(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.add_exercise") as add:
+        r = client.post(
+            "/dashboard/exercises/add?token=richtig", data={"name": "  "}, follow_redirects=False
+        )
+    assert r.status_code == 303
+    add.assert_not_called()
+    assert "view=uebungen" in r.headers["location"]
+
+
+def test_dashboard_exercises_add_doppelter_name(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.add_exercise", side_effect=Exception("duplicate key value violates ...")):
+        r = client.post(
+            "/dashboard/exercises/add?token=richtig",
+            data={"name": "Bankdrücken"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    assert "existiert" in r.headers["location"] or "existiert".encode() in r.headers["location"].encode()
+
+
+def test_dashboard_exercises_add_bei_db_fehler_redirect_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.add_exercise", side_effect=Exception("supabase down")):
+        r = client.post(
+            "/dashboard/exercises/add?token=richtig", data={"name": "X"}, follow_redirects=False
+        )
+    assert r.status_code == 303
+    assert "view=uebungen" in r.headers["location"]
+    assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
+
+
+def test_dashboard_exercises_update_ohne_token_401():
+    r = client.post("/dashboard/exercises/update", data={"original_name": "X", "name": "Y"})
+    assert r.status_code == 401
+
+
+def test_dashboard_exercises_update_umbenennung(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_exercise") as update:
+        r = client.post(
+            "/dashboard/exercises/update?token=richtig",
+            data={"original_name": "Bankdrücken", "name": "Bankdrücken Neu", "aliases": "bankdrücken neu"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    update.assert_called_once_with(42, "Bankdrücken", "Bankdrücken Neu", ["bankdrücken neu"], None, False, False)
+    assert "umbenannt" in r.headers["location"]
+
+
+def test_dashboard_exercises_update_ohne_umbenennung(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_exercise") as update:
+        r = client.post(
+            "/dashboard/exercises/update?token=richtig",
+            data={"original_name": "Bankdrücken", "name": "Bankdrücken", "aliases": "bankdrücken"},
+            follow_redirects=False,
+        )
+    update.assert_called_once()
+    assert "gespeichert" in r.headers["location"]
+
+
+def test_dashboard_exercises_update_leerer_name_wird_abgelehnt(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_exercise") as update:
+        r = client.post(
+            "/dashboard/exercises/update?token=richtig",
+            data={"original_name": "Bankdrücken", "name": " "},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    update.assert_not_called()
+
+
+def test_dashboard_exercises_update_doppelter_name(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.update_exercise", side_effect=Exception("duplicate key value ...")):
+        r = client.post(
+            "/dashboard/exercises/update?token=richtig",
+            data={"original_name": "Bankdrücken", "name": "Kniebeuge"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 303
+    assert "existiert" in r.headers["location"] or "existiert".encode() in r.headers["location"].encode()
+
+
+def test_dashboard_exercises_delete_ohne_token_401():
+    r = client.post("/dashboard/exercises/delete", data={"name": "X"})
+    assert r.status_code == 401
+
+
+def test_dashboard_exercises_delete_erfolgsfall(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.delete_exercise") as delete:
+        r = client.post(
+            "/dashboard/exercises/delete?token=richtig", data={"name": "Bankdrücken"}, follow_redirects=False
+        )
+    assert r.status_code == 303
+    delete.assert_called_once_with("Bankdrücken")
+    assert "gel%C3%B6scht" in r.headers["location"] or "gelöscht" in r.headers["location"]
+    assert "view=uebungen" in r.headers["location"]
+
+
+def test_dashboard_exercises_delete_bei_db_fehler_redirect_statt_500(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_TOKEN", "richtig")
+    with patch("app.main.db.delete_exercise", side_effect=Exception("supabase down")):
+        r = client.post(
+            "/dashboard/exercises/delete?token=richtig", data={"name": "Bankdrücken"}, follow_redirects=False
+        )
+    assert r.status_code == 303
+    assert "H%C3%A4nger" in r.headers["location"] or "Hänger" in r.headers["location"]
+
+
 def test_manifest_ohne_token_401():
     r = client.get("/manifest.webmanifest")
     assert r.status_code == 401

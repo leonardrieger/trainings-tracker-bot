@@ -1,7 +1,15 @@
 # Trainings-Tracker Telegram-Bot — Projektzusammenfassung
 
-_Stand: 2026-07-15 (Sprachnachrichten-Logging, editierbarer Wochenplan,
-Bequemlichkeits-Features, Python-Version-Fix)_
+_Stand: 2026-07-15 (PR-Erkennung, Übungsverwaltung im Dashboard,
+Sprachnachrichten-Logging, editierbarer Wochenplan, Bequemlichkeits-Features,
+Python-Version-Fix)_
+
+> ⚠️ **Offener Migrations-Schritt:** `sql/schema.sql` hat eine neue `exercises`-Tabelle
+> (für die Übungsverwaltung). Bis die im Supabase-SQL-Editor einmalig ausgeführt wird,
+> schlägt **jeder** `db.get_exercise_catalog()`-Aufruf fehl — betrifft nicht nur den
+> neuen „Übungen"-Tab, sondern auch ganz normales Loggen per Telegram/Dashboard (wird
+> zwar sauber als freundliche Fehlermeldung abgefangen statt abzustürzen, aber nichts
+> wird mehr gespeichert). Migration ausführen, sobald dieser Stand deployed wird.
 
 Persönlicher Fitness-Tracker: Trainingseinheiten werden per Telegram-Nachricht in
 freier Sprache geloggt (z.B. „2 Sätze 8 Wiederholungen 80kg Bankdrücken"), landen in
@@ -49,22 +57,23 @@ Telegram (Handy) --Webhook--> Render (FastAPI) --insert/query--> Supabase (Postg
 ```
 app/
   config.py       Persönliche Programm-Config: Wochenplan, Programmlänge, Zielgewicht, Deload-Fenster
-  main.py         FastAPI-App: Webhook, /cron/tick, /dashboard (+/log, /undo), PWA-Routen, Command-Routing
-  parser.py       Regex-Parsing von Nachrichten -> ParsedWorkout
-  llm_parser.py   Groq-LLM-Parsing mit Regex-Fallback
+  main.py         FastAPI-App: Webhook, /cron/tick, /dashboard (+/log, /undo, /exercises/*), PWA-Routen, Command-Routing
+  parser.py       Regex-Parsing von Nachrichten -> ParsedWorkout (Katalog per Parameter injizierbar)
+  llm_parser.py   Groq-LLM-Parsing mit Regex-Fallback (Katalog per Parameter injizierbar)
   chat.py         Freies Frage-Antwort-Chat via Groq, mit Multi-Turn-Gedächtnis (letzte 3 Paare, 60min Idle-Reset)
-  exercises.py    Übungsnamen + Aliase, PLAN_SECTIONS (Tag A/B/C…), SESSION_ONLY_EXERCISES
-  db.py           Supabase-Wrapper (Insert/Query/State/Delete)
+  exercises.py    Übungsnamen + Aliase, PLAN_SECTIONS (Tag A/B/C…), SESSION_ONLY_EXERCISES — Python-Defaults,
+                  DB-Override optional über die neue exercises-Tabelle (siehe db.get_exercise_catalog)
+  db.py           Supabase-Wrapper (Insert/Query/State/Delete, Übungs-Katalog-CRUD mit Seed-bei-erstem-Schreiben)
   telegram.py     sendMessage (+ reply_markup) / sendPhoto / answerCallbackQuery / Datei-Download
   transcribe.py   Sprachnachrichten-Transkription via Groq Whisper (kostenlos), kein Fallback bei Fehler
   chart.py        Matplotlib-Fortschritts-Charts (ruhige, minimalistische Dark-Palette, Metrik-Fallback)
   reminders.py    Reine Logik: Reminder, Wochenzähler, Klimmzug-Phasen, Deload, Wochenrückblick, Gewichts-Delta
-  dashboard.py    App-artiges Dashboard (Tab-Navigation Heute/Fortschritt/Verlauf/Plan, Eingabe-Formular
+  dashboard.py    App-artiges Dashboard (Tab-Navigation Heute/Fortschritt/Verlauf/Plan/Übungen, Eingabe-Formular
                   mit Autocomplete + Wiederholen-Chips, PWA-Meta-Tags)
   static/         PWA-Icons (icon-192.png, icon-512.png)
-sql/schema.sql    Tabellen: workout_logs, body_weight_logs, bot_state
+sql/schema.sql    Tabellen: workout_logs, body_weight_logs, bot_state, exercises
 docs/             Beispiel-Chart fürs README
-tests/            172 Tests (pytest)
+tests/            211 Tests (pytest) + conftest.py (Autouse-Fixture für Übungs-Katalog-Default)
 .github/workflows/test.yml   CI: pytest bei jedem Push/PR
 LICENSE           MIT
 CONTRIBUTING.md   Kurzanleitung für Mitwirkende (Dev-Setup, Tests, eigenen Plan konfigurieren)
@@ -80,6 +89,12 @@ requirements.txt, .python-version, .env.example, README.md
 - **`body_weight_logs`** — id, telegram_user_id, weight_kg, raw_text, logged_at
 - **`bot_state`** — key/value (last_reminder_date, last_weekly_summary_date,
   program_start_date, chat_history, training_plan)
+- **`exercises`** — id, name (unique), aliases (text[]), section (nullable, einer der
+  5 festen Tag-Titel), is_cardio, is_session_only, sort_order. Leer = Python-Defaults
+  aus `app/exercises.py` gelten unverändert; wird bei der ersten Änderung über den
+  „Übungen"-Tab einmalig komplett mit diesen Defaults befüllt (siehe
+  `db._seed_exercises_if_empty`), damit ein einzelner Edit nicht alle anderen Übungen
+  unsichtbar macht. **Migration noch ausstehend** (siehe Hinweis oben).
 
 ---
 
@@ -96,15 +111,19 @@ requirements.txt, .python-version, .env.example, README.md
 | `/programm [datum]` | Programmstart setzen (JJJJ-MM-TT) oder Status anzeigen |
 | `/undo` | Zuletzt geloggten Eintrag löschen |
 
+Beim Loggen mit Gewicht meldet der Bot zusätzlich „🎉 Neuer Rekord!", wenn `weight_kg`
+den bisher höchsten für diese Übung geloggten Wert übertrifft (Definition: höchstes
+Gewicht, nicht Volumen).
+
 ---
 
 ## Dashboard-Features
 
-- **App-artige Ansicht:** vier Tabs (Heute / Fortschritt / Verlauf / Plan) mit fester
-  unterer Tab-Leiste statt einer langen Scroll-Seite. Minimalistischer, ruhiger
-  Dark-Look (warmer Amber-Akzent sehr sparsam, dünne große Zahlen mit tabular-nums,
-  Haarlinien statt schwerer Karten). Aktiver Tab wird server-seitig über `?view=`
-  gesteuert (z.B. nach einem Redirect gezielt auf einem Tab landen).
+- **App-artige Ansicht:** fünf Tabs (Heute / Fortschritt / Verlauf / Plan / Übungen)
+  mit fester unterer Tab-Leiste statt einer langen Scroll-Seite. Minimalistischer,
+  ruhiger Dark-Look (warmer Amber-Akzent sehr sparsam, dünne große Zahlen mit
+  tabular-nums, Haarlinien statt schwerer Karten). Aktiver Tab wird server-seitig über
+  `?view=` gesteuert (z.B. nach einem Redirect gezielt auf einem Tab landen).
 - **Heute:** Tagesplan + Wochennummer groß oben, „Zuletzt"-Chips (letzter geloggter
   Satz je Übung, Antippen füllt das Eingabefeld vor statt neu zu tippen),
   Schnell-Eingabe mit Übungsnamen-Autocomplete (`<datalist>`), Wochenstreifen
@@ -118,6 +137,12 @@ requirements.txt, .python-version, .env.example, README.md
   (JSON), fällt pro Tag auf die Config-Defaults zurück, „Zurücksetzen"-Button stellt
   die Defaults wieder her. Wirkt sich auf Telegram-Erinnerung, Heute-Tab und den
   LLM-Chat-Kontext aus.
+- **Übungen:** volle Verwaltung des Übungs-Katalogs — neue Übungen anlegen,
+  bestehende umbenennen (kaskadiert automatisch auf `workout_logs`, Verlaufsdaten
+  bleiben erhalten), Aliase bearbeiten, Tag-Zuordnung ändern (die 5 Tag-Titel selbst
+  bleiben fix), Cardio-/Session-only-Flags setzen, löschen (nur der Katalog-Eintrag —
+  bisherige Log-Einträge bleiben unter „Sonstiges" im Fortschritt-Tab sichtbar). Kein
+  „Alles zurücksetzen", um eigene Anpassungen nicht versehentlich zu verwerfen.
 - **Installierbar als PWA:** `/manifest.webmanifest` + `/sw.js` (No-Op-Service-Worker,
   kein Offline-Caching) + `apple-touch-icon`/Meta-Tags für iOS. "Zum Startbildschirm
   hinzufügen" macht daraus eine App-artige Kachel auf dem Handy.
@@ -197,7 +222,13 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 
 ## Bereits umgesetzte Features (chronologisch, neueste zuerst)
 
-1. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
+1. **PR-Erkennung + Übungsverwaltung im Dashboard** — Bot meldet „🎉 Neuer Rekord!" bei
+   neuem Bestgewicht pro Übung. Neuer „Übungen"-Tab: Übungen/Aliase/Tag-Zuordnung/
+   Cardio-Flags voll verwaltbar statt nur per Code-Deploy in `app/exercises.py` —
+   neue `exercises`-Tabelle (Migration in `sql/schema.sql` noch auszuführen, siehe
+   Hinweis oben), Seed-bei-erstem-Schreiben verhindert, dass ein einzelner Edit alle
+   anderen Übungen unsichtbar macht, Umbenennung kaskadiert auf `workout_logs`.
+2. **Sprachnachrichten-Logging** — Trainingseinträge per Telegram-Sprachnachricht statt
    Tippen. Transkription via Groq Whisper (kostenlos), rohes Transkript kommt immer
    zuerst als Echo zurück (Transparenz bei möglichen Fehltranskriptionen deutscher
    Fachbegriffe), danach dieselbe Erkennungs-/Bestätigungs-/Chat-Fallback-Pipeline wie
@@ -243,16 +274,7 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 ## Was als Nächstes ansteht
 
 **Noch nicht terminiert:**
-- **Übungen/Aliase im Dashboard editierbar machen** — welche Übungen zu Tag A/B/C
-  gehören (`PLAN_SECTIONS`) sowie die Erkennungs-Aliase (`EXERCISE_ALIASES`) liegen
-  bisher nur in `app/exercises.py` im Code, dafür ist weiterhin ein Deploy nötig.
-  Größerer Umbau als der bereits umgesetzte Wochenplan-Editor, da Aliase sowohl die
-  Freitext-Erkennung als auch die Dashboard-Gruppierung betreffen.
-- **PR-/Rekord-Erkennung** — Bot meldet „🎉 Neuer Rekord!" bei neuem Bestwert pro Übung
-  (Definition klären: höchstes Gewicht oder Volumen = Gewicht × Wiederholungen?).
 - **CSV-Export** vom Dashboard (Daten-Backup / eigene Auswertung).
-- **Foto-Logging** — Foto vom Trainingsgerät-Display schicken, per Vision-Modell
-  auslesen (größerer Umbau, andere Groq-Prompt-Pfad nötig).
 - **Mehrbenutzer-Fähigkeit** — mehrere Telegram-Nutzer mit je eigenem Plan/Daten statt
   fixem `ALLOWED_TELEGRAM_USER_ID`. Deutlich größerer Schritt (Auth, Datentrennung,
   Onboarding) — nur sinnvoll, wenn das Projekt bewusst von „für mich" zu „für viele"
@@ -266,9 +288,10 @@ Das Repo selbst enthält keine Secrets (History geprüft)._
 # venv liegt bereits unter venv/
 venv\Scripts\activate            # Windows
 pip install -r requirements.txt
-pytest                           # 172 Tests
+pytest                           # 211 Tests
 uvicorn app.main:app --reload    # lokaler Server
 ```
 
 Schema-Änderungen: Inhalt von `sql/schema.sql` im Supabase-Dashboard → SQL Editor
-ausführen (keine CLI nötig).
+ausführen (keine CLI nötig). **Aktuell ausstehend:** die neue `exercises`-Tabelle
+(siehe Hinweis ganz oben) — ohne sie schlägt jeder Log-Versuch fehl.

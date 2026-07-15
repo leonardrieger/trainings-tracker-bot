@@ -29,3 +29,13 @@ create table if not exists bot_state (
     key text primary key,
     value text not null
 );
+
+create table if not exists exercises (
+    id bigint generated always as identity primary key,
+    name text not null unique,
+    aliases text[] not null default '{}',
+    section text,
+    is_cardio boolean not null default false,
+    is_session_only boolean not null default false,
+    sort_order int not null default 0
+);

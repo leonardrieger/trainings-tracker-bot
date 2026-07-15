@@ -333,7 +333,8 @@ def _handle_message(chat_id: int, user_id: int, text: str) -> dict:
             telegram.send_photo(chat_id, image, caption=f"Fortschritt: {exercise}")
         return {"ok": True}
 
-    parsed = parse_message(text)
+    aliases, cardio_exercises, _, _ = db.get_exercise_catalog()
+    parsed = parse_message(text, aliases, cardio_exercises)
     if parsed.recognized:
         telegram.send_message(chat_id, _log_workout_and_build_message(user_id, parsed))
         return {"ok": True}
@@ -365,10 +366,13 @@ def dashboard(token: str = "", msg: str = "", view: str = "heute") -> HTMLRespon
         plan_long, plan_short = db.get_training_plan()
         weight_delta = db.get_weight_change_in_range(user_id, today - timedelta(days=7), today)
         last_sets = db.get_last_sets(user_id)
+        aliases, cardio_exercises, session_only_exercises, plan_sections = db.get_exercise_catalog()
         html = render_dashboard_html(
             recent, token, latest_weight, training_days, summary, week_number, today, trained_dates,
             flash=msg or None, plan_long=plan_long, plan_short=plan_short, view=view,
             weight_delta=weight_delta, last_sets=last_sets,
+            exercise_aliases=aliases, cardio_exercises=cardio_exercises,
+            session_only_exercises=session_only_exercises, plan_sections=plan_sections,
         )
         return HTMLResponse(html)
     except Exception:
@@ -404,7 +408,8 @@ def dashboard_log(text: str = Form(...), token: str = "") -> Response:
         return Response(status_code=401)
     try:
         user_id = _allowed_user_id()
-        parsed = parse_message(text)
+        aliases, cardio_exercises, _, _ = db.get_exercise_catalog()
+        parsed = parse_message(text, aliases, cardio_exercises)
         if parsed.recognized:
             msg = _log_workout_and_build_message(user_id, parsed)
         else:
@@ -465,6 +470,95 @@ def dashboard_plan_reset(token: str = "") -> Response:
     except Exception:
         logging.exception("Fehler beim Zurücksetzen des Wochenplans")
         return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG, view="plan")
+
+
+def _parse_aliases_field(raw: str, name: str) -> list[str]:
+    aliases = [a.strip() for a in raw.split(",") if a.strip()]
+    # Ohne Aliase erkennt der Regex-Fallback die Übung nie - der kleingeschriebene
+    # Name selbst ist der sinnvollste Minimal-Alias (Muster aus app/exercises.py).
+    return aliases or [name.strip().lower()]
+
+
+def _is_duplicate_exercise_name_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "duplicate key" in text or "23505" in text
+
+
+@app.post("/dashboard/exercises/add")
+async def dashboard_exercises_add(request: Request, token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    try:
+        form = await request.form()
+        name = str(form.get("name", "")).strip()
+        if not name:
+            return _dashboard_redirect(token, "⚠️ Name darf nicht leer sein.", view="uebungen")
+        aliases = _parse_aliases_field(str(form.get("aliases", "")), name)
+        section = str(form.get("section", "")).strip() or None
+        is_session_only = "is_session_only" in form
+        is_cardio = "is_cardio" in form or is_session_only
+
+        try:
+            db.add_exercise(name, aliases, section, is_cardio, is_session_only)
+        except Exception as exc:
+            if _is_duplicate_exercise_name_error(exc):
+                return _dashboard_redirect(
+                    token, f'⚠️ Eine Übung namens „{name}" existiert bereits.', view="uebungen"
+                )
+            raise
+        return _dashboard_redirect(token, f'✅ „{name}" hinzugefügt.', view="uebungen")
+    except Exception:
+        logging.exception("Fehler beim Hinzufügen einer Übung")
+        return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG, view="uebungen")
+
+
+@app.post("/dashboard/exercises/update")
+async def dashboard_exercises_update(request: Request, token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    try:
+        form = await request.form()
+        original_name = str(form.get("original_name", "")).strip()
+        name = str(form.get("name", "")).strip()
+        if not name:
+            return _dashboard_redirect(token, "⚠️ Name darf nicht leer sein.", view="uebungen")
+        aliases = _parse_aliases_field(str(form.get("aliases", "")), name)
+        section = str(form.get("section", "")).strip() or None
+        is_session_only = "is_session_only" in form
+        is_cardio = "is_cardio" in form or is_session_only
+
+        try:
+            db.update_exercise(
+                _allowed_user_id(), original_name, name, aliases, section, is_cardio, is_session_only
+            )
+        except Exception as exc:
+            if _is_duplicate_exercise_name_error(exc):
+                return _dashboard_redirect(
+                    token, f'⚠️ Eine Übung namens „{name}" existiert bereits.', view="uebungen"
+                )
+            raise
+        if name != original_name:
+            msg = f'✅ „{original_name}" umbenannt zu „{name}" (inkl. Verlaufsdaten).'
+        else:
+            msg = f'✅ „{name}" gespeichert.'
+        return _dashboard_redirect(token, msg, view="uebungen")
+    except Exception:
+        logging.exception("Fehler beim Speichern einer Übung")
+        return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG, view="uebungen")
+
+
+@app.post("/dashboard/exercises/delete")
+def dashboard_exercises_delete(name: str = Form(...), token: str = "") -> Response:
+    if not _dashboard_authorized(token):
+        return Response(status_code=401)
+    try:
+        db.delete_exercise(name.strip())
+        return _dashboard_redirect(
+            token, f'🗑️ „{name}" gelöscht. Bisherige Einträge bleiben unter „Sonstiges" sichtbar.', view="uebungen"
+        )
+    except Exception:
+        logging.exception("Fehler beim Löschen einer Übung")
+        return _dashboard_redirect(token, _DASHBOARD_ERROR_MSG, view="uebungen")
 
 
 @app.get("/sw.js")

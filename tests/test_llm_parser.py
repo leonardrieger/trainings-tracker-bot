@@ -116,3 +116,30 @@ def test_fallback_bei_kaputtem_json(monkeypatch):
         r = llm_parser.parse_message("2 Sets 8 Wiederholungen 80kg Bankdrücken")
     assert r.exercise == "Bankdrücken"
     assert r.sets == 2
+
+
+def test_parse_message_mit_injiziertem_katalog_validiert_dagegen(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    custom_aliases = {"Meine Übung": ["meine übung"]}
+    payload = {
+        "exercise": "Bankdrücken",  # nicht Teil des injizierten Katalogs
+        "is_cardio": False, "sets": 3, "reps": 8, "weight_kg": 50,
+        "duration_min": None, "distance_km": None,
+    }
+    with patch("app.llm_parser.httpx.post", return_value=_fake_groq_response(payload)):
+        r = llm_parser.parse_message(
+            "3x8 50kg Bankdrücken", aliases=custom_aliases, cardio_exercises=set()
+        )
+    assert r.exercise is None
+    assert r.recognized is False
+
+
+def test_fallback_auf_regex_nutzt_injizierten_katalog(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    custom_aliases = {"Meine Übung": ["meine übung"]}
+    with patch("app.llm_parser.httpx.post", side_effect=Exception("network down")):
+        r = llm_parser.parse_message(
+            "3x8 50kg Meine Übung", aliases=custom_aliases, cardio_exercises=set()
+        )
+    assert r.exercise == "Meine Übung"
+    assert r.sets == 3
